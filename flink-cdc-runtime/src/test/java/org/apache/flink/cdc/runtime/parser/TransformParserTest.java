@@ -17,8 +17,11 @@
 
 package org.apache.flink.cdc.runtime.parser;
 
+import org.apache.flink.api.common.io.ParseException;
+import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.types.DataTypes;
+import org.apache.flink.cdc.runtime.operators.transform.ProjectionColumn;
 import org.apache.flink.cdc.runtime.parser.metadata.TransformSchemaFactory;
 import org.apache.flink.cdc.runtime.parser.metadata.TransformSqlOperatorTable;
 
@@ -46,6 +49,7 @@ import org.apache.calcite.tools.RelBuilder;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -264,6 +268,111 @@ public class TransformParserTest {
         testFilterExpression(
                 "case when id = 1 then 'a' when id = 2 then 'b' else 'c' end",
                 "(valueEquals(id, 1) ? \"a\" : valueEquals(id, 2) ? \"b\" : \"c\")");
+    }
+
+    @Test
+    public void testGenerateProjectionColumns() {
+        List<Column> testColumns =
+                Arrays.asList(
+                        Column.physicalColumn("id", DataTypes.INT(), "id"),
+                        Column.physicalColumn("name", DataTypes.STRING(), "string"),
+                        Column.physicalColumn("age", DataTypes.INT(), "age"),
+                        Column.physicalColumn("address", DataTypes.STRING(), "address"),
+                        Column.physicalColumn("weight", DataTypes.DOUBLE(), "weight"),
+                        Column.physicalColumn("height", DataTypes.DOUBLE(), "height"));
+
+        List<ProjectionColumn> result =
+                TransformParser.generateProjectionColumns(
+                        "id, upper(name) as name, age + 1 as newage, weight / (height * height) as bmi",
+                        testColumns);
+
+        List<String> expected =
+                Arrays.asList(
+                        "ProjectionColumn{column=`id` INT, expression='null', scriptExpression='null', originalColumnNames=null, transformExpressionKey=null}",
+                        "ProjectionColumn{column=`name` STRING, expression='UPPER(`TB`.`name`)', scriptExpression='upper(name)', originalColumnNames=[name], transformExpressionKey=null}",
+                        "ProjectionColumn{column=`newage` INT, expression='`TB`.`age` + 1', scriptExpression='age + 1', originalColumnNames=[age], transformExpressionKey=null}",
+                        "ProjectionColumn{column=`bmi` DOUBLE, expression='`TB`.`weight` / (`TB`.`height` * `TB`.`height`)', scriptExpression='weight / height * height', originalColumnNames=[weight, height, height], transformExpressionKey=null}");
+        Assert.assertEquals(result.toString(), "[" + String.join(", ", expected) + "]");
+
+        List<ProjectionColumn> metadataResult =
+                TransformParser.generateProjectionColumns(
+                        "*, __namespace_name__, __schema_name__, __table_name__", testColumns);
+
+        List<String> metadataExpected =
+                Arrays.asList(
+                        "ProjectionColumn{column=`id` INT, expression='null', scriptExpression='null', originalColumnNames=null, transformExpressionKey=null}",
+                        "ProjectionColumn{column=`name` STRING, expression='null', scriptExpression='null', originalColumnNames=null, transformExpressionKey=null}",
+                        "ProjectionColumn{column=`age` INT, expression='null', scriptExpression='null', originalColumnNames=null, transformExpressionKey=null}",
+                        "ProjectionColumn{column=`address` STRING, expression='null', scriptExpression='null', originalColumnNames=null, transformExpressionKey=null}",
+                        "ProjectionColumn{column=`weight` DOUBLE, expression='null', scriptExpression='null', originalColumnNames=null, transformExpressionKey=null}",
+                        "ProjectionColumn{column=`height` DOUBLE, expression='null', scriptExpression='null', originalColumnNames=null, transformExpressionKey=null}",
+                        "ProjectionColumn{column=`__namespace_name__` STRING NOT NULL, expression='__namespace_name__', scriptExpression='__namespace_name__', originalColumnNames=[__namespace_name__], transformExpressionKey=null}",
+                        "ProjectionColumn{column=`__schema_name__` STRING NOT NULL, expression='__schema_name__', scriptExpression='__schema_name__', originalColumnNames=[__schema_name__], transformExpressionKey=null}",
+                        "ProjectionColumn{column=`__table_name__` STRING NOT NULL, expression='__table_name__', scriptExpression='__table_name__', originalColumnNames=[__table_name__], transformExpressionKey=null}");
+        Assert.assertEquals(
+                metadataResult.toString(), "[" + String.join(", ", metadataExpected) + "]");
+
+        // calculated columns must use AS to provide an alias name
+        Assert.assertThrows(
+                ParseException.class,
+                () -> {
+                    TransformParser.generateProjectionColumns("id, 1 + 1", testColumns);
+                });
+    }
+
+    @Test
+    public void testGenerateReferencedColumns() {
+        List<Column> testColumns =
+                Arrays.asList(
+                        Column.physicalColumn("id", DataTypes.INT(), "id"),
+                        Column.physicalColumn("name", DataTypes.STRING(), "string"),
+                        Column.physicalColumn("age", DataTypes.INT(), "age"),
+                        Column.physicalColumn("address", DataTypes.STRING(), "address"),
+                        Column.physicalColumn("weight", DataTypes.DOUBLE(), "weight"),
+                        Column.physicalColumn("height", DataTypes.DOUBLE(), "height"),
+                        Column.physicalColumn("birthday", DataTypes.DATE(), "birthday"));
+
+        List<Column> result =
+                TransformParser.generateReferencedColumns(
+                        "id, upper(name) as name, age + 1 as newage, weight / (height * height) as bmi",
+                        "bmi > 17 and char_length(address) > 10",
+                        testColumns);
+
+        List<String> expected =
+                Arrays.asList(
+                        "`id` INT 'id'",
+                        "`name` STRING 'string'",
+                        "`age` INT 'age'",
+                        "`address` STRING 'address'",
+                        "`weight` DOUBLE 'weight'",
+                        "`height` DOUBLE 'height'");
+        Assert.assertEquals(result.toString(), "[" + String.join(", ", expected) + "]");
+
+        // calculated columns must use AS to provide an alias name
+        Assert.assertThrows(
+                ParseException.class,
+                () -> {
+                    TransformParser.generateReferencedColumns("id, 1 + 1", null, testColumns);
+                });
+    }
+
+    @Test
+    public void testNormalizeFilter() {
+        Assert.assertEquals(
+                TransformParser.normalizeFilter("a, b, c, d", "a > 0 and b > 0"),
+                "`a` > 0 AND `b` > 0");
+        Assert.assertEquals(TransformParser.normalizeFilter("a, b, c, d", null), null);
+        Assert.assertEquals(
+                TransformParser.normalizeFilter(
+                        "abs(a) as cal_a, char_length(b) as cal_b, c, d",
+                        "a > 4 and cal_a > 8 and cal_b < 17 and c != d"),
+                "`a` > 4 AND ABS(`a`) > 8 AND CHAR_LENGTH(`b`) < 17 AND `c` <> `d`");
+
+        Assert.assertEquals(
+                TransformParser.normalizeFilter(
+                        "x, y, z, 1 - x as u, 1 - y as v, 1 - z as w",
+                        "concat(u, concat(v, concat(w, x), y), z) != 10"),
+                "`concat`(1 - `x`, `concat`(1 - `y`, `concat`(1 - `z`, `x`), `y`), `z`) <> 10");
     }
 
     private void testFilterExpression(String expression, String expressionExpect) {

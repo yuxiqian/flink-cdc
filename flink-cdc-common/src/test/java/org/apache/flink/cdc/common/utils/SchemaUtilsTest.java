@@ -163,4 +163,272 @@ public class SchemaUtilsTest {
                         .physicalColumn("newCol4", DataTypes.VARCHAR(10))
                         .build());
     }
+
+    @Test
+    public void testGetNumericPrecision() {
+        Assert.assertEquals(SchemaUtils.getNumericPrecision(DataTypes.TINYINT()), 3);
+        Assert.assertEquals(SchemaUtils.getNumericPrecision(DataTypes.SMALLINT()), 5);
+        Assert.assertEquals(SchemaUtils.getNumericPrecision(DataTypes.INT()), 10);
+        Assert.assertEquals(SchemaUtils.getNumericPrecision(DataTypes.BIGINT()), 19);
+        Assert.assertEquals(SchemaUtils.getNumericPrecision(DataTypes.DECIMAL(10, 2)), 10);
+        Assert.assertEquals(SchemaUtils.getNumericPrecision(DataTypes.DECIMAL(17, 0)), 17);
+        Assert.assertThrows(
+                IllegalArgumentException.class,
+                () -> SchemaUtils.getNumericPrecision(DataTypes.STRING()));
+    }
+
+    @Test
+    public void testMergeDataType() {
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.BINARY(17), DataTypes.BINARY(17)),
+                DataTypes.BINARY(17));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.VARBINARY(17), DataTypes.VARBINARY(17)),
+                DataTypes.VARBINARY(17));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.BYTES(), DataTypes.BYTES()), DataTypes.BYTES());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.BOOLEAN(), DataTypes.BOOLEAN()),
+                DataTypes.BOOLEAN());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.INT(), DataTypes.INT()), DataTypes.INT());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.TINYINT(), DataTypes.TINYINT()),
+                DataTypes.TINYINT());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.SMALLINT(), DataTypes.SMALLINT()),
+                DataTypes.SMALLINT());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.BIGINT(), DataTypes.BIGINT()),
+                DataTypes.BIGINT());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.FLOAT(), DataTypes.FLOAT()), DataTypes.FLOAT());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.DOUBLE(), DataTypes.DOUBLE()),
+                DataTypes.DOUBLE());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.CHAR(17), DataTypes.CHAR(17)),
+                DataTypes.CHAR(17));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.VARCHAR(17), DataTypes.VARCHAR(17)),
+                DataTypes.VARCHAR(17));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.STRING(), DataTypes.STRING()),
+                DataTypes.STRING());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.DECIMAL(17, 7), DataTypes.DECIMAL(17, 7)),
+                DataTypes.DECIMAL(17, 7));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.DATE(), DataTypes.DATE()), DataTypes.DATE());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.TIME(), DataTypes.TIME()), DataTypes.TIME());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.TIME(6), DataTypes.TIME(6)), DataTypes.TIME(6));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.TIMESTAMP(), DataTypes.TIMESTAMP()),
+                DataTypes.TIMESTAMP());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.TIMESTAMP(3), DataTypes.TIMESTAMP(3)),
+                DataTypes.TIMESTAMP(3));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.TIMESTAMP_TZ(), DataTypes.TIMESTAMP_TZ()),
+                DataTypes.TIMESTAMP_TZ());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.TIMESTAMP_TZ(3), DataTypes.TIMESTAMP_TZ(3)),
+                DataTypes.TIMESTAMP_TZ(3));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.TIMESTAMP_LTZ(), DataTypes.TIMESTAMP_LTZ()),
+                DataTypes.TIMESTAMP_LTZ());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.TIMESTAMP_LTZ(3), DataTypes.TIMESTAMP_LTZ(3)),
+                DataTypes.TIMESTAMP_LTZ(3));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(
+                        DataTypes.ARRAY(DataTypes.INT()), DataTypes.ARRAY(DataTypes.INT())),
+                DataTypes.ARRAY(DataTypes.INT()));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(
+                        DataTypes.MAP(DataTypes.INT(), DataTypes.STRING()),
+                        DataTypes.MAP(DataTypes.INT(), DataTypes.STRING())),
+                DataTypes.MAP(DataTypes.INT(), DataTypes.STRING()));
+
+        // Test compatible widening cast
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.INT(), DataTypes.BIGINT()), DataTypes.BIGINT());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.VARCHAR(17), DataTypes.STRING()),
+                DataTypes.STRING());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.FLOAT(), DataTypes.DOUBLE()),
+                DataTypes.DOUBLE());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.INT(), DataTypes.DECIMAL(4, 0)),
+                DataTypes.DECIMAL(10, 0));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.INT(), DataTypes.DECIMAL(10, 5)),
+                DataTypes.DECIMAL(15, 5));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.BIGINT(), DataTypes.DECIMAL(10, 5)),
+                DataTypes.DECIMAL(24, 5));
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.DECIMAL(5, 4), DataTypes.DECIMAL(10, 2)),
+                DataTypes.DECIMAL(12, 4));
+
+        // Test merging with nullability
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.INT().notNull(), DataTypes.INT().notNull()),
+                DataTypes.INT().notNull());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.INT().nullable(), DataTypes.INT().notNull()),
+                DataTypes.INT().nullable());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.INT().notNull(), DataTypes.INT().nullable()),
+                DataTypes.INT().nullable());
+        Assert.assertEquals(
+                SchemaUtils.mergeDataType(DataTypes.INT().nullable(), DataTypes.INT().nullable()),
+                DataTypes.INT().nullable());
+
+        // incompatible type merges test
+        Assert.assertThrows(
+                IllegalStateException.class,
+                () -> SchemaUtils.mergeDataType(DataTypes.INT(), DataTypes.DOUBLE()));
+        Assert.assertThrows(
+                IllegalStateException.class,
+                () -> SchemaUtils.mergeDataType(DataTypes.DECIMAL(17, 0), DataTypes.DOUBLE()));
+        Assert.assertThrows(
+                IllegalStateException.class,
+                () -> SchemaUtils.mergeDataType(DataTypes.INT(), DataTypes.STRING()));
+    }
+
+    @Test
+    public void testMergeColumn() {
+        // Test normal merges
+        Assert.assertEquals(
+                SchemaUtils.mergeColumn(
+                        Column.physicalColumn("Column1", DataTypes.INT()),
+                        Column.physicalColumn("Column1", DataTypes.BIGINT())),
+                Column.physicalColumn("Column1", DataTypes.BIGINT()));
+
+        Assert.assertEquals(
+                SchemaUtils.mergeColumn(
+                        Column.physicalColumn("Column2", DataTypes.FLOAT()),
+                        Column.physicalColumn("Column2", DataTypes.DOUBLE())),
+                Column.physicalColumn("Column2", DataTypes.DOUBLE()));
+
+        // Test merging columns with incompatible types
+        Assert.assertThrows(
+                IllegalStateException.class,
+                () ->
+                        SchemaUtils.mergeColumn(
+                                Column.physicalColumn("Column3", DataTypes.INT()),
+                                Column.physicalColumn("Column3", DataTypes.STRING())));
+
+        // Test merging with incompatible names
+        Assert.assertThrows(
+                IllegalStateException.class,
+                () ->
+                        SchemaUtils.mergeColumn(
+                                Column.physicalColumn("Column4", DataTypes.INT()),
+                                Column.physicalColumn("AnotherColumn4", DataTypes.INT())));
+    }
+
+    @Test
+    public void testMergeSchema() {
+        // Test normal merges
+        Assert.assertEquals(
+                SchemaUtils.mergeSchema(
+                        Schema.newBuilder()
+                                .physicalColumn("Column1", DataTypes.INT())
+                                .physicalColumn("Column2", DataTypes.DOUBLE())
+                                .primaryKey("Column1")
+                                .partitionKey("Column2")
+                                .build(),
+                        Schema.newBuilder()
+                                .physicalColumn("Column1", DataTypes.BIGINT())
+                                .physicalColumn("Column2", DataTypes.FLOAT())
+                                .primaryKey("Column1")
+                                .partitionKey("Column2")
+                                .build()),
+                Schema.newBuilder()
+                        .physicalColumn("Column1", DataTypes.BIGINT())
+                        .physicalColumn("Column2", DataTypes.DOUBLE())
+                        .primaryKey("Column1")
+                        .partitionKey("Column2")
+                        .build());
+
+        // Test merging with incompatible types
+        Assert.assertThrows(
+                IllegalStateException.class,
+                () ->
+                        SchemaUtils.mergeSchema(
+                                Schema.newBuilder()
+                                        .physicalColumn("Column1", DataTypes.INT())
+                                        .physicalColumn("Column2", DataTypes.DOUBLE())
+                                        .primaryKey("Column1")
+                                        .partitionKey("Column2")
+                                        .build(),
+                                Schema.newBuilder()
+                                        .physicalColumn("Column1", DataTypes.STRING())
+                                        .physicalColumn("Column2", DataTypes.STRING())
+                                        .primaryKey("Column1")
+                                        .partitionKey("Column2")
+                                        .build()));
+
+        // Test merging with incompatible column names
+        Assert.assertThrows(
+                IllegalStateException.class,
+                () ->
+                        SchemaUtils.mergeSchema(
+                                Schema.newBuilder()
+                                        .physicalColumn("Column1", DataTypes.INT())
+                                        .physicalColumn("Column2", DataTypes.DOUBLE())
+                                        .primaryKey("Column1")
+                                        .partitionKey("Column2")
+                                        .build(),
+                                Schema.newBuilder()
+                                        .physicalColumn("NotColumn1", DataTypes.INT())
+                                        .physicalColumn("NotColumn2", DataTypes.DOUBLE())
+                                        .primaryKey("NotColumn1")
+                                        .partitionKey("NotColumn2")
+                                        .build()));
+
+        // Test merging with different column counts
+        Assert.assertThrows(
+                IllegalStateException.class,
+                () ->
+                        SchemaUtils.mergeSchema(
+                                Schema.newBuilder()
+                                        .physicalColumn("Column1", DataTypes.INT())
+                                        .physicalColumn("Column2", DataTypes.DOUBLE())
+                                        .physicalColumn("Column3", DataTypes.STRING())
+                                        .primaryKey("Column1")
+                                        .partitionKey("Column2")
+                                        .build(),
+                                Schema.newBuilder()
+                                        .physicalColumn("NotColumn1", DataTypes.INT())
+                                        .physicalColumn("NotColumn2", DataTypes.DOUBLE())
+                                        .primaryKey("NotColumn1")
+                                        .partitionKey("NotColumn2")
+                                        .build()));
+
+        // Test merging with incompatible schema metadata
+        Assert.assertThrows(
+                IllegalStateException.class,
+                () ->
+                        SchemaUtils.mergeSchema(
+                                Schema.newBuilder()
+                                        .physicalColumn("Column1", DataTypes.INT())
+                                        .physicalColumn("Column2", DataTypes.DOUBLE())
+                                        .primaryKey("Column1")
+                                        .partitionKey("Column2")
+                                        .option("Key1", "Value1")
+                                        .build(),
+                                Schema.newBuilder()
+                                        .physicalColumn("Column1", DataTypes.INT())
+                                        .physicalColumn("Column2", DataTypes.DOUBLE())
+                                        .primaryKey("Column2")
+                                        .partitionKey("Column1")
+                                        .option("Key2", "Value2")
+                                        .build()));
+    }
 }
