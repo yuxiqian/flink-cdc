@@ -31,7 +31,7 @@ import java.util.Objects;
  * lenient column type changes.
  */
 @PublicEvolving
-public final class AddColumnEvent implements SchemaChangeEvent {
+public final class AddColumnEvent implements ColumnSchemaChangeEvent {
 
     private static final long serialVersionUID = 1L;
 
@@ -172,5 +172,10 @@ public final class AddColumnEvent implements SchemaChangeEvent {
     @Override
     public TableId tableId() {
         return tableId;
+    }
+
+    @Override
+    public SchemaChangeEventType getType() {
+        return SchemaChangeEventType.ADD_COLUMN;
     }
 }

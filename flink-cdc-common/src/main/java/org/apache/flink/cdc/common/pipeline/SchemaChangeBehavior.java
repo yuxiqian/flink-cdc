@@ -22,7 +22,8 @@ import org.apache.flink.cdc.common.annotation.PublicEvolving;
 /** Behavior for handling schema changes. */
 @PublicEvolving
 public enum SchemaChangeBehavior {
-    EVOLVE,
     IGNORE,
+    TRY_EVOLVE,
+    EVOLVE,
     EXCEPTION
 }

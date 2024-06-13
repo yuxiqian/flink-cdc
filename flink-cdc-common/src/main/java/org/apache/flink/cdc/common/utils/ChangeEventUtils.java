@@ -17,14 +17,29 @@
 
 package org.apache.flink.cdc.common.utils;
 
+import org.apache.flink.cdc.common.annotation.VisibleForTesting;
 import org.apache.flink.cdc.common.event.AddColumnEvent;
+import org.apache.flink.cdc.common.event.AlterColumnCommentEvent;
 import org.apache.flink.cdc.common.event.AlterColumnTypeEvent;
+import org.apache.flink.cdc.common.event.AlterTableCommentEvent;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.DropColumnEvent;
+import org.apache.flink.cdc.common.event.DropTableEvent;
 import org.apache.flink.cdc.common.event.RenameColumnEvent;
+import org.apache.flink.cdc.common.event.RenameTableEvent;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
+import org.apache.flink.cdc.common.event.SchemaChangeEventType;
+import org.apache.flink.cdc.common.event.SchemaChangeEventTypeFamily;
+import org.apache.flink.cdc.common.event.SchemaChangeEventVisitor;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /** Utilities for handling {@link org.apache.flink.cdc.common.event.ChangeEvent}s. */
 public class ChangeEventUtils {
@@ -56,29 +71,93 @@ public class ChangeEventUtils {
 
     public static SchemaChangeEvent recreateSchemaChangeEvent(
             SchemaChangeEvent schemaChangeEvent, TableId tableId) {
-        if (schemaChangeEvent instanceof CreateTableEvent) {
-            CreateTableEvent createTableEvent = (CreateTableEvent) schemaChangeEvent;
-            return new CreateTableEvent(tableId, createTableEvent.getSchema());
+
+        return schemaChangeEvent.visit(
+                new SchemaChangeEventVisitor<SchemaChangeEvent>() {
+                    @Override
+                    public SchemaChangeEvent visit(AddColumnEvent event) {
+                        return new AddColumnEvent(tableId, event.getAddedColumns());
+                    }
+
+                    @Override
+                    public SchemaChangeEvent visit(AlterColumnCommentEvent event) {
+                        return new AlterColumnCommentEvent(
+                                tableId, event.getCommentMapping(), event.getOldCommentMapping());
+                    }
+
+                    @Override
+                    public SchemaChangeEvent visit(AlterColumnTypeEvent event) {
+                        return new AlterColumnTypeEvent(
+                                tableId, event.getTypeMapping(), event.getOldTypeMapping());
+                    }
+
+                    @Override
+                    public SchemaChangeEvent visit(AlterTableCommentEvent event) {
+                        return new AlterTableCommentEvent(tableId, event.getTableComment());
+                    }
+
+                    @Override
+                    public SchemaChangeEvent visit(CreateTableEvent event) {
+                        return new CreateTableEvent(tableId, event.getSchema());
+                    }
+
+                    @Override
+                    public SchemaChangeEvent visit(DropColumnEvent event) {
+                        return new DropColumnEvent(tableId, event.getDroppedColumnNames());
+                    }
+
+                    @Override
+                    public SchemaChangeEvent visit(DropTableEvent event) {
+                        return new DropTableEvent(tableId);
+                    }
+
+                    @Override
+                    public SchemaChangeEvent visit(RenameColumnEvent event) {
+                        return new RenameColumnEvent(tableId, event.getNameMapping());
+                    }
+
+                    @Override
+                    public SchemaChangeEvent visit(RenameTableEvent event) {
+                        return new RenameTableEvent(tableId, event.newTableId());
+                    }
+
+                    @Override
+                    public SchemaChangeEvent visit(TruncateTableEvent event) {
+                        return new TruncateTableEvent(tableId);
+                    }
+                });
+    }
+
+    public static Set<SchemaChangeEventType> resolveSchemaEvolutionOptions(
+            List<String> includedSchemaEvolutionTypes, List<String> excludedSchemaEvolutionTypes) {
+        List<SchemaChangeEventType> resultTypes = new ArrayList<>();
+
+        if (includedSchemaEvolutionTypes.isEmpty()) {
+            resultTypes.addAll(Arrays.asList(SchemaChangeEventTypeFamily.ALL));
+        } else {
+            for (String includeTag : includedSchemaEvolutionTypes) {
+                resultTypes.addAll(resolveSchemaEvolutionTag(includeTag));
+            }
         }
-        if (schemaChangeEvent instanceof AlterColumnTypeEvent) {
-            AlterColumnTypeEvent alterColumnTypeEvent = (AlterColumnTypeEvent) schemaChangeEvent;
-            return new AlterColumnTypeEvent(tableId, alterColumnTypeEvent.getTypeMapping());
+
+        for (String excludeTag : excludedSchemaEvolutionTypes) {
+            resultTypes.removeAll(resolveSchemaEvolutionTag(excludeTag));
         }
-        if (schemaChangeEvent instanceof RenameColumnEvent) {
-            RenameColumnEvent renameColumnEvent = (RenameColumnEvent) schemaChangeEvent;
-            return new RenameColumnEvent(tableId, renameColumnEvent.getNameMapping());
+
+        return new HashSet<>(resultTypes);
+    }
+
+    @VisibleForTesting
+    public static List<SchemaChangeEventType> resolveSchemaEvolutionTag(String tag) {
+        List<SchemaChangeEventType> types =
+                new ArrayList<>(Arrays.asList(SchemaChangeEventTypeFamily.ofTag(tag)));
+        if (types.isEmpty()) {
+            // It's a specified tag
+            SchemaChangeEventType type = SchemaChangeEventType.ofTag(tag);
+            if (type != null) {
+                types.add(type);
+            }
         }
-        if (schemaChangeEvent instanceof DropColumnEvent) {
-            DropColumnEvent dropColumnEvent = (DropColumnEvent) schemaChangeEvent;
-            return new DropColumnEvent(tableId, dropColumnEvent.getDroppedColumnNames());
-        }
-        if (schemaChangeEvent instanceof AddColumnEvent) {
-            AddColumnEvent addColumnEvent = (AddColumnEvent) schemaChangeEvent;
-            return new AddColumnEvent(tableId, addColumnEvent.getAddedColumns());
-        }
-        throw new UnsupportedOperationException(
-                String.format(
-                        "Unsupported schema change event with type \"%s\"",
-                        schemaChangeEvent.getClass().getCanonicalName()));
+        return types;
     }
 }

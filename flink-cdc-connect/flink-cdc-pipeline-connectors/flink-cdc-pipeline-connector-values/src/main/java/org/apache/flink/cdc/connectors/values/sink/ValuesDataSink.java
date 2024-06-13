@@ -19,13 +19,14 @@ package org.apache.flink.cdc.connectors.values.sink;
 
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.connector.sink2.SinkWriter;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.cdc.common.annotation.Internal;
 import org.apache.flink.cdc.common.data.RecordData;
 import org.apache.flink.cdc.common.event.ChangeEvent;
-import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
+import org.apache.flink.cdc.common.event.SchemaChangeEventType;
 import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.DataSink;
@@ -40,6 +41,7 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** A {@link DataSink} for "values" connector that supports schema evolution. */
 @Internal
@@ -52,10 +54,17 @@ public class ValuesDataSink implements DataSink, Serializable {
 
     private final SinkApi sinkApi;
 
-    public ValuesDataSink(boolean materializedInMemory, boolean print, SinkApi sinkApi) {
+    private final boolean errorOnSchemaChange;
+
+    public ValuesDataSink(
+            boolean materializedInMemory,
+            boolean print,
+            SinkApi sinkApi,
+            boolean errorOnSchemaChange) {
         this.materializedInMemory = materializedInMemory;
         this.print = print;
         this.sinkApi = sinkApi;
+        this.errorOnSchemaChange = errorOnSchemaChange;
     }
 
     @Override
@@ -69,8 +78,12 @@ public class ValuesDataSink implements DataSink, Serializable {
     }
 
     @Override
-    public MetadataApplier getMetadataApplier() {
-        return new ValuesDatabase.ValuesMetadataApplier();
+    public MetadataApplier getMetadataApplier(Set<SchemaChangeEventType> enabledEventTypes) {
+        if (errorOnSchemaChange) {
+            return new ValuesDatabase.ErrorOnChangeMetadataApplier(enabledEventTypes);
+        } else {
+            return new ValuesDatabase.ValuesMetadataApplier(enabledEventTypes);
+        }
     }
 
     /** an e2e {@link Sink} implementation that print all {@link DataChangeEvent} out. */
@@ -131,20 +144,18 @@ public class ValuesDataSink implements DataSink, Serializable {
         public void write(Event event, Context context) {
             if (event instanceof SchemaChangeEvent) {
                 SchemaChangeEvent schemaChangeEvent = (SchemaChangeEvent) event;
-                TableId tableId = schemaChangeEvent.tableId();
-                if (event instanceof CreateTableEvent) {
-                    Schema schema = ((CreateTableEvent) event).getSchema();
-                    schemaMaps.put(tableId, schema);
-                    fieldGetterMaps.put(tableId, SchemaUtils.createFieldGetters(schema));
+                Tuple2<TableId, Schema> appliedSchema =
+                        SchemaUtils.applySchemaChangeEvent(
+                                schemaChangeEvent,
+                                schemaMaps.getOrDefault(schemaChangeEvent.tableId(), null));
+
+                if (appliedSchema.f1 != null) {
+                    schemaMaps.put(appliedSchema.f0, appliedSchema.f1);
+                    fieldGetterMaps.put(
+                            appliedSchema.f0, SchemaUtils.createFieldGetters(appliedSchema.f1));
                 } else {
-                    if (!schemaMaps.containsKey(tableId)) {
-                        throw new RuntimeException("schema of " + tableId + " is not existed.");
-                    }
-                    Schema schema =
-                            SchemaUtils.applySchemaChangeEvent(
-                                    schemaMaps.get(tableId), schemaChangeEvent);
-                    schemaMaps.put(tableId, schema);
-                    fieldGetterMaps.put(tableId, SchemaUtils.createFieldGetters(schema));
+                    schemaMaps.remove(appliedSchema.f0);
+                    fieldGetterMaps.remove(appliedSchema.f0);
                 }
             } else if (materializedInMemory && event instanceof DataChangeEvent) {
                 ValuesDatabase.applyDataChangeEvent((DataChangeEvent) event);

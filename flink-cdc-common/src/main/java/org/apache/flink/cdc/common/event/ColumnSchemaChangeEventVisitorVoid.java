@@ -15,27 +15,17 @@
  * limitations under the License.
  */
 
-package org.apache.flink.cdc.runtime.operators.schema.event;
+package org.apache.flink.cdc.common.event;
 
-import org.apache.flink.cdc.common.annotation.Internal;
-import org.apache.flink.cdc.common.schema.Schema;
-import org.apache.flink.cdc.runtime.operators.schema.coordinator.SchemaRegistry;
-import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+/** Visitor class for all {@link ColumnSchemaChangeEvent}s and returns nothing. */
+public interface ColumnSchemaChangeEventVisitorVoid {
+    void visit(AddColumnEvent event) throws Exception;
 
-import javax.annotation.Nullable;
+    void visit(AlterColumnCommentEvent event) throws Exception;
 
-import java.util.Optional;
+    void visit(AlterColumnTypeEvent event) throws Exception;
 
-/** Coordination response from {@link SchemaRegistry} for {@link GetSchemaRequest}. */
-@Internal
-public class GetSchemaResponse implements CoordinationResponse {
-    @Nullable private final Schema schema;
+    void visit(DropColumnEvent event) throws Exception;
 
-    public GetSchemaResponse(@Nullable Schema schema) {
-        this.schema = schema;
-    }
-
-    public Optional<Schema> getSchema() {
-        return Optional.ofNullable(schema);
-    }
+    void visit(RenameColumnEvent event) throws Exception;
 }

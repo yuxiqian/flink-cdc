@@ -19,12 +19,19 @@ package org.apache.flink.cdc.connectors.doris.sink;
 
 import org.apache.flink.cdc.common.configuration.Configuration;
 import org.apache.flink.cdc.common.event.AddColumnEvent;
+import org.apache.flink.cdc.common.event.AlterColumnCommentEvent;
 import org.apache.flink.cdc.common.event.AlterColumnTypeEvent;
+import org.apache.flink.cdc.common.event.AlterTableCommentEvent;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DropColumnEvent;
+import org.apache.flink.cdc.common.event.DropTableEvent;
 import org.apache.flink.cdc.common.event.RenameColumnEvent;
+import org.apache.flink.cdc.common.event.RenameTableEvent;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
+import org.apache.flink.cdc.common.event.SchemaChangeEventType;
+import org.apache.flink.cdc.common.event.SchemaChangeEventVisitorVoid;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
 import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
@@ -34,6 +41,8 @@ import org.apache.flink.cdc.common.types.TimestampType;
 import org.apache.flink.cdc.common.types.ZonedTimestampType;
 import org.apache.flink.cdc.common.types.utils.DataTypeUtils;
 import org.apache.flink.util.CollectionUtil;
+
+import org.apache.flink.shaded.guava31.com.google.common.collect.Sets;
 
 import org.apache.doris.flink.catalog.DorisTypeMapper;
 import org.apache.doris.flink.catalog.doris.DataModel;
@@ -51,7 +60,11 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import static org.apache.flink.cdc.common.event.SchemaChangeEventType.ADD_COLUMN;
+import static org.apache.flink.cdc.common.event.SchemaChangeEventType.DROP_COLUMN;
+import static org.apache.flink.cdc.common.event.SchemaChangeEventType.RENAME_COLUMN;
 import static org.apache.flink.cdc.connectors.doris.sink.DorisDataSinkOptions.TABLE_CREATE_PROPERTIES_PREFIX;
 
 /** Supports {@link DorisDataSink} to schema evolution. */
@@ -60,32 +73,96 @@ public class DorisMetadataApplier implements MetadataApplier {
     private DorisOptions dorisOptions;
     private SchemaChangeManager schemaChangeManager;
     private Configuration config;
+    private final Set<SchemaChangeEventType> enabledSchemaEvolutionTypes;
 
     public DorisMetadataApplier(DorisOptions dorisOptions, Configuration config) {
         this.dorisOptions = dorisOptions;
         this.schemaChangeManager = new SchemaChangeManager(dorisOptions);
         this.config = config;
+        this.enabledSchemaEvolutionTypes = getSupportedSchemaEvolutionTypes();
+    }
+
+    public DorisMetadataApplier(
+            DorisOptions dorisOptions,
+            Configuration config,
+            Set<SchemaChangeEventType> enabledSchemaEvolutionTypes) {
+        this.dorisOptions = dorisOptions;
+        this.schemaChangeManager = new SchemaChangeManager(dorisOptions);
+        this.config = config;
+        this.enabledSchemaEvolutionTypes = enabledSchemaEvolutionTypes;
+    }
+
+    @Override
+    public boolean acceptsSchemaEvolutionType(SchemaChangeEventType schemaChangeEventType) {
+        return enabledSchemaEvolutionTypes.contains(schemaChangeEventType);
+    }
+
+    @Override
+    public Set<SchemaChangeEventType> getSupportedSchemaEvolutionTypes() {
+        return Sets.newHashSet(ADD_COLUMN, DROP_COLUMN, RENAME_COLUMN);
     }
 
     @Override
     public void applySchemaChange(SchemaChangeEvent event) {
-        try {
-            // send schema change op to doris
-            if (event instanceof CreateTableEvent) {
-                applyCreateTableEvent((CreateTableEvent) event);
-            } else if (event instanceof AddColumnEvent) {
-                applyAddColumnEvent((AddColumnEvent) event);
-            } else if (event instanceof DropColumnEvent) {
-                applyDropColumnEvent((DropColumnEvent) event);
-            } else if (event instanceof RenameColumnEvent) {
-                applyRenameColumnEvent((RenameColumnEvent) event);
-            } else if (event instanceof AlterColumnTypeEvent) {
-                throw new RuntimeException("Unsupported schema change event, " + event);
-            }
-        } catch (Exception ex) {
-            throw new RuntimeException(
-                    "Failed to schema change, " + event + ", reason: " + ex.getMessage());
-        }
+        event.visit(
+                new SchemaChangeEventVisitorVoid() {
+
+                    @Override
+                    public void visit(AddColumnEvent event) throws Exception {
+                        applyAddColumnEvent(event);
+                    }
+
+                    @Override
+                    public void visit(AlterColumnCommentEvent event) {
+                        throw new UnsupportedOperationException(
+                                "Unsupported schema change event: " + event);
+                    }
+
+                    @Override
+                    public void visit(AlterColumnTypeEvent event) {
+                        throw new UnsupportedOperationException(
+                                "Unsupported schema change event: " + event);
+                    }
+
+                    @Override
+                    public void visit(AlterTableCommentEvent event) {
+                        throw new UnsupportedOperationException(
+                                "Unsupported schema change event: " + event);
+                    }
+
+                    @Override
+                    public void visit(CreateTableEvent event) throws Exception {
+                        applyCreateTableEvent(event);
+                    }
+
+                    @Override
+                    public void visit(DropColumnEvent event) throws Exception {
+                        applyDropColumnEvent(event);
+                    }
+
+                    @Override
+                    public void visit(DropTableEvent event) {
+                        throw new UnsupportedOperationException(
+                                "Unsupported schema change event: " + event);
+                    }
+
+                    @Override
+                    public void visit(RenameColumnEvent event) throws Exception {
+                        applyRenameColumnEvent(event);
+                    }
+
+                    @Override
+                    public void visit(RenameTableEvent event) {
+                        throw new UnsupportedOperationException(
+                                "Unsupported schema change event: " + event);
+                    }
+
+                    @Override
+                    public void visit(TruncateTableEvent event) {
+                        throw new UnsupportedOperationException(
+                                "Unsupported schema change event: " + event);
+                    }
+                });
     }
 
     private void applyCreateTableEvent(CreateTableEvent event)

@@ -20,13 +20,18 @@ package org.apache.flink.cdc.connectors.values;
 import org.apache.flink.cdc.common.annotation.Internal;
 import org.apache.flink.cdc.common.data.RecordData;
 import org.apache.flink.cdc.common.event.AddColumnEvent;
+import org.apache.flink.cdc.common.event.AlterColumnCommentEvent;
 import org.apache.flink.cdc.common.event.AlterColumnTypeEvent;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.DropColumnEvent;
+import org.apache.flink.cdc.common.event.DropTableEvent;
 import org.apache.flink.cdc.common.event.RenameColumnEvent;
+import org.apache.flink.cdc.common.event.RenameTableEvent;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
+import org.apache.flink.cdc.common.event.SchemaChangeEventType;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.event.TruncateTableEvent;
 import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
@@ -35,12 +40,15 @@ import org.apache.flink.cdc.common.utils.Preconditions;
 import org.apache.flink.cdc.connectors.values.sink.ValuesDataSink;
 import org.apache.flink.cdc.connectors.values.source.ValuesDataSource;
 
+import org.apache.flink.shaded.guava31.com.google.common.collect.Sets;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -69,9 +77,78 @@ public class ValuesDatabase {
      */
     public static class ValuesMetadataApplier implements MetadataApplier {
 
+        private final Set<SchemaChangeEventType> enabledSchemaEvolutionTypes;
+
+        public ValuesMetadataApplier() {
+            this.enabledSchemaEvolutionTypes = getSupportedSchemaEvolutionTypes();
+        }
+
+        public ValuesMetadataApplier(Set<SchemaChangeEventType> types) {
+            this.enabledSchemaEvolutionTypes = types;
+        }
+
+        @Override
+        public boolean acceptsSchemaEvolutionType(SchemaChangeEventType schemaChangeEventType) {
+            return enabledSchemaEvolutionTypes.contains(schemaChangeEventType);
+        }
+
+        @Override
+        public Set<SchemaChangeEventType> getSupportedSchemaEvolutionTypes() {
+            return Sets.newHashSet(
+                    SchemaChangeEventType.ADD_COLUMN,
+                    SchemaChangeEventType.ALTER_COLUMN_TYPE,
+                    SchemaChangeEventType.CREATE_TABLE,
+                    SchemaChangeEventType.DROP_COLUMN,
+                    SchemaChangeEventType.RENAME_COLUMN);
+        }
+
         @Override
         public void applySchemaChange(SchemaChangeEvent schemaChangeEvent) {
             applySchemaChangeEvent(schemaChangeEvent);
+        }
+    }
+
+    /**
+     * apply SchemaChangeEvent to ValuesDatabase and print it out, throw exception if illegal
+     * changes occur.
+     */
+    public static class ErrorOnChangeMetadataApplier implements MetadataApplier {
+        private final Set<SchemaChangeEventType> enabledSchemaEvolutionTypes;
+
+        public ErrorOnChangeMetadataApplier() {
+            enabledSchemaEvolutionTypes = getSupportedSchemaEvolutionTypes();
+        }
+
+        public ErrorOnChangeMetadataApplier(Set<SchemaChangeEventType> types) {
+            enabledSchemaEvolutionTypes = types;
+        }
+
+        @Override
+        public boolean acceptsSchemaEvolutionType(SchemaChangeEventType schemaChangeEventType) {
+            return enabledSchemaEvolutionTypes.contains(schemaChangeEventType);
+        }
+
+        @Override
+        public Set<SchemaChangeEventType> getSupportedSchemaEvolutionTypes() {
+            return Collections.singleton(SchemaChangeEventType.CREATE_TABLE);
+        }
+
+        @Override
+        public void applySchemaChange(SchemaChangeEvent schemaChangeEvent) {
+            if (schemaChangeEvent instanceof CreateTableEvent) {
+                TableId tableId = schemaChangeEvent.tableId();
+                if (!globalTables.containsKey(tableId)) {
+                    globalTables.put(
+                            tableId,
+                            new ValuesTable(
+                                    tableId, ((CreateTableEvent) schemaChangeEvent).getSchema()));
+                }
+            } else {
+                throw new RuntimeException(
+                        String.format(
+                                "Rejected schema change event %s since error.on.schema.change is enabled.",
+                                schemaChangeEvent));
+            }
         }
     }
 
@@ -140,6 +217,13 @@ public class ValuesDatabase {
         return builder.primaryKey(table.primaryKeys).build();
     }
 
+    public static void applyTruncateTableEvent(TruncateTableEvent event) {
+        ValuesTable table = globalTables.get(event.tableId());
+        Preconditions.checkNotNull(table, event.tableId() + " is not existed");
+        table.applyTruncateTableEvent(event);
+        LOG.info("apply TruncateTableEvent: " + event);
+    }
+
     public static void applyDataChangeEvent(DataChangeEvent event) {
         ValuesTable table = globalTables.get(event.tableId());
         Preconditions.checkNotNull(table, event.tableId() + " is not existed");
@@ -153,6 +237,22 @@ public class ValuesDatabase {
             if (!globalTables.containsKey(tableId)) {
                 globalTables.put(
                         tableId, new ValuesTable(tableId, ((CreateTableEvent) event).getSchema()));
+            }
+        } else if (event instanceof RenameTableEvent) {
+            if (globalTables.containsKey(tableId)) {
+                TableId newTableId =
+                        TableId.tableId(
+                                tableId.getNamespace(),
+                                tableId.getSchemaName(),
+                                ((RenameTableEvent) event).newTableId().getTableName());
+                globalTables.put(newTableId, globalTables.remove(tableId));
+            }
+        } else if (event instanceof DropTableEvent) {
+            globalTables.remove(tableId);
+        } else if (event instanceof TruncateTableEvent) {
+            if (globalTables.containsKey(tableId)) {
+                ValuesTable table = globalTables.get(event.tableId());
+                table.applyTruncateTableEvent((TruncateTableEvent) event);
             }
         } else {
             ValuesTable table = globalTables.get(event.tableId());
@@ -318,6 +418,24 @@ public class ValuesDatabase {
                             });
         }
 
+        private void applyAlterColumnCommentEvent(AlterColumnCommentEvent event) {
+            event.getCommentMapping()
+                    .forEach(
+                            (columnName, columnComment) -> {
+                                for (int i = 0; i < columns.size(); i++) {
+                                    Column column = columns.get(i);
+                                    if (column.getName().equals(columnName)) {
+                                        columns.set(
+                                                i,
+                                                Column.physicalColumn(
+                                                        columnName,
+                                                        column.getType(),
+                                                        columnComment));
+                                    }
+                                }
+                            });
+        }
+
         private void applyAddColumnEvent(AddColumnEvent event) {
             for (AddColumnEvent.ColumnWithPosition columnWithPosition : event.getAddedColumns()) {
                 if (columns.contains(columnWithPosition.getAddColumn())) {
@@ -399,6 +517,10 @@ public class ValuesDatabase {
                                             }
                                         });
                             });
+        }
+
+        private void applyTruncateTableEvent(TruncateTableEvent event) {
+            records.clear();
         }
     }
 }

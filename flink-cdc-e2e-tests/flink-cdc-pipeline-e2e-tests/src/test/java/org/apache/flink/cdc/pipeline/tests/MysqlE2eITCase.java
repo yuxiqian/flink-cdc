@@ -55,6 +55,7 @@ public class MysqlE2eITCase extends PipelineTestEnvironment {
     protected static final String MYSQL_TEST_PASSWORD = "mysqlpw";
     protected static final String MYSQL_DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
     protected static final String INTER_CONTAINER_MYSQL_ALIAS = "mysql";
+    protected static final long EVENT_WAITING_TIMEOUT = 60000L;
 
     @ClassRule
     public static final MySqlContainer MYSQL =
@@ -117,13 +118,11 @@ public class MysqlE2eITCase extends PipelineTestEnvironment {
         waitUntilSpecificEvent(
                 String.format(
                         "DataChangeEvent{tableId=%s.customers, before=[], after=[104, user_4, Shanghai, 123567891234], op=INSERT, meta=()}",
-                        mysqlInventoryDatabase.getDatabaseName()),
-                60000L);
+                        mysqlInventoryDatabase.getDatabaseName()));
         waitUntilSpecificEvent(
                 String.format(
                         "DataChangeEvent{tableId=%s.products, before=[], after=[109, spare tire, 24 inch spare tire, 22.2, null, null, null], op=INSERT, meta=()}",
-                        mysqlInventoryDatabase.getDatabaseName()),
-                60000L);
+                        mysqlInventoryDatabase.getDatabaseName()));
         List<String> expectedEvents =
                 Arrays.asList(
                         String.format(
@@ -191,17 +190,22 @@ public class MysqlE2eITCase extends PipelineTestEnvironment {
             waitUntilSpecificEvent(
                     String.format(
                             "DataChangeEvent{tableId=%s.products, before=[106, hammer, 16oz carpenter's hammer, 1.0, null, null, null], after=[106, hammer, 18oz carpenter hammer, 1.0, null, null, null], op=UPDATE, meta=()}",
-                            mysqlInventoryDatabase.getDatabaseName()),
-                    20000L);
+                            mysqlInventoryDatabase.getDatabaseName()));
 
             // modify table schema
             stat.execute("ALTER TABLE products ADD COLUMN new_col INT;");
             stat.execute(
                     "INSERT INTO products VALUES (default,'jacket','water resistent white wind breaker',0.2, null, null, null, 1);"); // 110
             stat.execute(
-                    "INSERT INTO products VALUES (default,'scooter','Big 2-wheel scooter ',5.18, null, null, null, 1);"); // 111
+                    "INSERT INTO products VALUES (default,'scooter','Big 2-wheel scooter ',5.17, null, null, null, 1);"); // 111
             stat.execute(
                     "UPDATE products SET description='new water resistent white wind breaker', weight='0.5' WHERE id=110;");
+            stat.execute("ALTER TABLE products MODIFY COLUMN weight INT COMMENT 'mass effect';");
+            stat.execute("ALTER TABLE products RENAME COLUMN weight TO weight_tmp;");
+            stat.execute("ALTER TABLE products RENAME COLUMN weight_tmp TO weight;");
+            stat.execute("ALTER TABLE products MODIFY COLUMN weight DOUBLE COMMENT 'mass effect';");
+            stat.execute("ALTER TABLE products MODIFY COLUMN weight DOUBLE;");
+            stat.execute("ALTER TABLE products MODIFY COLUMN weight FLOAT;");
             stat.execute("UPDATE products SET weight='5.17' WHERE id=111;");
             stat.execute("DELETE FROM products WHERE id=111;");
         } catch (SQLException e) {
@@ -212,8 +216,7 @@ public class MysqlE2eITCase extends PipelineTestEnvironment {
         waitUntilSpecificEvent(
                 String.format(
                         "DataChangeEvent{tableId=%s.products, before=[111, scooter, Big 2-wheel scooter , 5.17, null, null, null, 1], after=[], op=DELETE, meta=()}",
-                        mysqlInventoryDatabase.getDatabaseName()),
-                60000L);
+                        mysqlInventoryDatabase.getDatabaseName()));
 
         expectedEvents =
                 Arrays.asList(
@@ -230,29 +233,47 @@ public class MysqlE2eITCase extends PipelineTestEnvironment {
                                 "DataChangeEvent{tableId=%s.products, before=[], after=[110, jacket, water resistent white wind breaker, 0.2, null, null, null, 1], op=INSERT, meta=()}",
                                 mysqlInventoryDatabase.getDatabaseName()),
                         String.format(
-                                "DataChangeEvent{tableId=%s.products, before=[], after=[111, scooter, Big 2-wheel scooter , 5.18, null, null, null, 1], op=INSERT, meta=()}",
+                                "DataChangeEvent{tableId=%s.products, before=[], after=[111, scooter, Big 2-wheel scooter , 5.17, null, null, null, 1], op=INSERT, meta=()}",
                                 mysqlInventoryDatabase.getDatabaseName()),
                         String.format(
                                 "DataChangeEvent{tableId=%s.products, before=[110, jacket, water resistent white wind breaker, 0.2, null, null, null, 1], after=[110, jacket, new water resistent white wind breaker, 0.5, null, null, null, 1], op=UPDATE, meta=()}",
                                 mysqlInventoryDatabase.getDatabaseName()),
                         String.format(
-                                "DataChangeEvent{tableId=%s.products, before=[111, scooter, Big 2-wheel scooter , 5.18, null, null, null, 1], after=[111, scooter, Big 2-wheel scooter , 5.17, null, null, null, 1], op=UPDATE, meta=()}",
+                                "DataChangeEvent{tableId=%s.products, before=[111, scooter, Big 2-wheel scooter , 5.0, null, null, null, 1], after=[111, scooter, Big 2-wheel scooter , 5.17, null, null, null, 1], op=UPDATE, meta=()}",
                                 mysqlInventoryDatabase.getDatabaseName()),
                         String.format(
                                 "DataChangeEvent{tableId=%s.products, before=[111, scooter, Big 2-wheel scooter , 5.17, null, null, null, 1], after=[], op=DELETE, meta=()}",
+                                mysqlInventoryDatabase.getDatabaseName()),
+                        String.format(
+                                "AlterColumnTypeEvent{tableId=%s.products, typeMapping={weight=INT}, oldTypeMapping={weight=FLOAT}}",
+                                mysqlInventoryDatabase.getDatabaseName()),
+                        String.format(
+                                "RenameColumnEvent{tableId=%s.products, nameMapping={weight=weight_tmp}}",
+                                mysqlInventoryDatabase.getDatabaseName()),
+                        String.format(
+                                "RenameColumnEvent{tableId=%s.products, nameMapping={weight_tmp=weight}}",
+                                mysqlInventoryDatabase.getDatabaseName()),
+                        String.format(
+                                "AlterColumnTypeEvent{tableId=%s.products, typeMapping={weight=DOUBLE}, oldTypeMapping={weight=INT}}",
+                                mysqlInventoryDatabase.getDatabaseName()),
+                        String.format(
+                                "AlterColumnCommentEvent{tableId=%s.products, commentMapping={weight=mass effect}, oldCommentMapping={weight=null}}",
+                                mysqlInventoryDatabase.getDatabaseName()),
+                        String.format(
+                                "AlterColumnCommentEvent{tableId=%s.products, commentMapping={weight=null}, oldCommentMapping={weight=mass effect}}",
                                 mysqlInventoryDatabase.getDatabaseName()));
         validateResult(expectedEvents);
     }
 
     private void validateResult(List<String> expectedEvents) throws Exception {
         for (String event : expectedEvents) {
-            waitUntilSpecificEvent(event, 6000L);
+            waitUntilSpecificEvent(event);
         }
     }
 
-    private void waitUntilSpecificEvent(String event, long timeout) throws Exception {
+    private void waitUntilSpecificEvent(String event) throws Exception {
         boolean result = false;
-        long endTimeout = System.currentTimeMillis() + timeout;
+        long endTimeout = System.currentTimeMillis() + MysqlE2eITCase.EVENT_WAITING_TIMEOUT;
         while (System.currentTimeMillis() < endTimeout) {
             String stdout = taskManagerConsumer.toUtf8String();
             if (stdout.contains(event)) {

@@ -333,7 +333,7 @@ class SchemaDerivationTest {
                         new AddColumnEvent.ColumnWithPosition(
                                 new PhysicalColumn("first_name", DataTypes.STRING(), null)));
 
-        assertThat(schemaManager.getLatestSchema(MERGED_TABLE))
+        assertThat(schemaManager.getLatestUpstreamSchema(MERGED_TABLE))
                 .contains(
                         Schema.newBuilder()
                                 .column(Column.physicalColumn("id", DataTypes.BIGINT()))
@@ -365,8 +365,8 @@ class SchemaDerivationTest {
                         () ->
                                 schemaDerivation.applySchemaChange(
                                         new CreateTableEvent(TABLE_2, INCOMPATIBLE_SCHEMA)))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Incompatible types: \"INT\" and \"STRING\"");
+                .hasRootCauseInstanceOf(IllegalStateException.class)
+                .hasRootCauseMessage("Incompatible types: \"INT\" and \"STRING\"");
     }
 
     @Test
