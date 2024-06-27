@@ -18,6 +18,7 @@
 package org.apache.flink.cdc.cli.parser;
 
 import org.apache.flink.cdc.common.configuration.Configuration;
+import org.apache.flink.cdc.common.exceptions.GuardVerificationException;
 import org.apache.flink.cdc.common.utils.StringUtils;
 import org.apache.flink.cdc.composer.definition.PipelineDef;
 import org.apache.flink.cdc.composer.definition.RouteDef;
@@ -55,6 +56,7 @@ public class YamlPipelineDefinitionParser implements PipelineDefinitionParser {
     // Route keys
     private static final String ROUTE_SOURCE_TABLE_KEY = "source-table";
     private static final String ROUTE_SINK_TABLE_KEY = "sink-table";
+    private static final String ROUTE_REPLACE_SYMBOL = "replace-symbol";
     private static final String ROUTE_DESCRIPTION_KEY = "description";
 
     // Transform keys
@@ -94,6 +96,15 @@ public class YamlPipelineDefinitionParser implements PipelineDefinitionParser {
                                 SINK_KEY));
 
         // Transforms are optional
+        Optional.ofNullable(root.get(TRANSFORM_KEY))
+                .ifPresent(
+                        node -> {
+                            if (!node.isArray()) {
+                                throw new GuardVerificationException(
+                                        node,
+                                        "Transform rules should be an array. Maybe missed a hyphen in YAML?");
+                            }
+                        });
         List<TransformDef> transformDefs = new ArrayList<>();
         Optional.ofNullable(root.get(TRANSFORM_KEY))
                 .ifPresent(
@@ -102,7 +113,18 @@ public class YamlPipelineDefinitionParser implements PipelineDefinitionParser {
                                         transform -> transformDefs.add(toTransformDef(transform))));
 
         // Routes are optional
+        Optional.ofNullable(root.get(ROUTE_KEY))
+                .ifPresent(
+                        node -> {
+                            if (!node.isArray()) {
+                                throw new GuardVerificationException(
+                                        node,
+                                        "Route rules should be an array. Maybe missed a hyphen in YAML?");
+                            }
+                        });
+
         List<RouteDef> routeDefs = new ArrayList<>();
+
         Optional.ofNullable(root.get(ROUTE_KEY))
                 .ifPresent(node -> node.forEach(route -> routeDefs.add(toRouteDef(route))));
 
@@ -164,11 +186,15 @@ public class YamlPipelineDefinitionParser implements PipelineDefinitionParser {
                                 "Missing required field \"%s\" in route configuration",
                                 ROUTE_SINK_TABLE_KEY)
                         .asText();
+        String replaceSymbol =
+                Optional.ofNullable(routeNode.get(ROUTE_REPLACE_SYMBOL))
+                        .map(JsonNode::asText)
+                        .orElse(null);
         String description =
                 Optional.ofNullable(routeNode.get(ROUTE_DESCRIPTION_KEY))
                         .map(JsonNode::asText)
                         .orElse(null);
-        return new RouteDef(sourceTable, sinkTable, description);
+        return new RouteDef(sourceTable, sinkTable, replaceSymbol, description);
     }
 
     private TransformDef toTransformDef(JsonNode transformNode) {
