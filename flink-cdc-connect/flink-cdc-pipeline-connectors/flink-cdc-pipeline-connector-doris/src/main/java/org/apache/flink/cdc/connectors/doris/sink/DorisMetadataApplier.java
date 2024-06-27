@@ -37,8 +37,10 @@ import org.apache.flink.util.CollectionUtil;
 
 import org.apache.doris.flink.catalog.DorisTypeMapper;
 import org.apache.doris.flink.catalog.doris.DataModel;
+import org.apache.doris.flink.catalog.doris.DorisSystem;
 import org.apache.doris.flink.catalog.doris.FieldSchema;
 import org.apache.doris.flink.catalog.doris.TableSchema;
+import org.apache.doris.flink.cfg.DorisConnectionOptions;
 import org.apache.doris.flink.cfg.DorisOptions;
 import org.apache.doris.flink.exception.IllegalArgumentException;
 import org.apache.doris.flink.sink.schema.SchemaChangeManager;
@@ -59,12 +61,23 @@ public class DorisMetadataApplier implements MetadataApplier {
     private static final Logger LOG = LoggerFactory.getLogger(DorisMetadataApplier.class);
     private DorisOptions dorisOptions;
     private SchemaChangeManager schemaChangeManager;
+    private DorisSystem dorisSystem;
     private Configuration config;
 
     public DorisMetadataApplier(DorisOptions dorisOptions, Configuration config) {
         this.dorisOptions = dorisOptions;
         this.schemaChangeManager = new SchemaChangeManager(dorisOptions);
         this.config = config;
+
+        DorisConnectionOptions.DorisConnectionOptionsBuilder builder =
+                new DorisConnectionOptions.DorisConnectionOptionsBuilder();
+
+        config.getOptional(DorisDataSinkOptions.FENODES).ifPresent(builder::withFenodes);
+        config.getOptional(DorisDataSinkOptions.JDBC_URL).ifPresent(builder::withJdbcUrl);
+        config.getOptional(DorisDataSinkOptions.USERNAME).ifPresent(builder::withUsername);
+        config.getOptional(DorisDataSinkOptions.PASSWORD).ifPresent(builder::withPassword);
+
+        this.dorisSystem = new DorisSystem(builder.build());
     }
 
     @Override
@@ -84,7 +97,7 @@ public class DorisMetadataApplier implements MetadataApplier {
             }
         } catch (Exception ex) {
             throw new RuntimeException(
-                    "Failed to schema change, " + event + ", reason: " + ex.getMessage());
+                    "Failed to schema change, " + event + ", reason: " + ex.getMessage(), ex);
         }
     }
 
@@ -97,6 +110,10 @@ public class DorisMetadataApplier implements MetadataApplier {
         tableSchema.setDatabase(tableId.getSchemaName());
         tableSchema.setFields(buildFields(schema));
         tableSchema.setDistributeKeys(buildDistributeKeys(schema));
+
+        if (!dorisSystem.databaseExists(tableId.getSchemaName())) {
+            dorisSystem.createDatabase(tableId.getSchemaName());
+        }
 
         if (CollectionUtil.isNullOrEmpty(schema.primaryKeys())) {
             tableSchema.setModel(DataModel.DUPLICATE);
