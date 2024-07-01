@@ -23,6 +23,7 @@ throw 'Unspecified `FLINK_HOME` environment variable.' if FLINK_HOME.nil?
 
 SOURCE_PORT = 3306
 DATABASE_NAME = 'fallen'
+TABLES = ['girl'].freeze
 
 def exec_sql_source(sql)
   `mysql -h 127.0.0.1 -P#{SOURCE_PORT} -uroot --skip-password -e "USE #{DATABASE_NAME}; #{sql}" 2>/dev/null`
@@ -33,18 +34,24 @@ def put_mystery_data(mystery)
 end
 
 def ensure_mystery_data(mystery)
-  throw "Failed to get specific mystery string" unless `cat #{FLINK_HOME}/log/*.out`.include? mystery
+  throw 'Failed to get specific mystery string' unless `cat #{FLINK_HOME}/log/*.out`.include? mystery
 end
 
 puts '   Waiting for source to start up...'
 next until exec_sql_source("SELECT '1';") == "1\n1\n"
 
 def test_migration_chore(from_version, to_version)
+  TABLES.each do |table_name|
+    exec_sql_source("DROP TABLE IF EXISTS #{table_name};")
+    exec_sql_source("CREATE TABLE #{table_name} (ID INT NOT NULL, NAME VARCHAR(17), PRIMARY KEY (ID));")
+  end
+
   # Clear previous savepoints and logs
   `rm -rf savepoints`
 
   old_job_id = `#{FLINK_HOME}/bin/flink run -p 1 -c DataStreamJob --detached datastream-#{from_version}/target/datastream-job-#{from_version}-jar-with-dependencies.jar`.split.last
-  raise StandardError.new("Failed to submit Flink job") unless old_job_id.length == 32
+  raise StandardError, 'Failed to submit Flink job' unless old_job_id.length == 32
+
   puts "Submitted job at #{from_version} as #{old_job_id}"
 
   random_string_1 = SecureRandom.hex(8)
@@ -55,7 +62,7 @@ def test_migration_chore(from_version, to_version)
   puts `#{FLINK_HOME}/bin/flink stop --savepointPath #{Dir.pwd}/savepoints #{old_job_id}`
   savepoint_file = `ls savepoints`.split("\n").last
   new_job_id = `#{FLINK_HOME}/bin/flink run --fromSavepoint #{Dir.pwd}/savepoints/#{savepoint_file} -p 1 -c DataStreamJob --detached datastream-#{to_version}/target/datastream-job-#{to_version}-jar-with-dependencies.jar`.split.last
-  raise StandardError.new("Failed to submit Flink job") unless new_job_id.length == 32
+  raise StandardError, 'Failed to submit Flink job' unless new_job_id.length == 32
 
   puts "Submitted job at #{to_version} as #{new_job_id}"
   random_string_2 = SecureRandom.hex(8)

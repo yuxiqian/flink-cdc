@@ -23,7 +23,7 @@ throw 'Unspecified `FLINK_HOME` environment variable.' if FLINK_HOME.nil?
 
 SOURCE_PORT = 3306
 DATABASE_NAME = 'fallen'
-TABLES = ['girl']
+TABLES = ['girl'].freeze
 
 def exec_sql_source(sql)
   `mysql -h 127.0.0.1 -P#{SOURCE_PORT} -uroot --skip-password -e "USE #{DATABASE_NAME}; #{sql}" 2>/dev/null`
@@ -34,7 +34,7 @@ def put_mystery_data(mystery)
 end
 
 def ensure_mystery_data(mystery)
-  throw "Failed to get specific mystery string" unless `cat #{FLINK_HOME}/log/*.out`.include? mystery
+  throw 'Failed to get specific mystery string' unless `cat #{FLINK_HOME}/log/*.out`.include? mystery
 end
 
 puts '   Waiting for source to start up...'
@@ -57,7 +57,8 @@ def test_migration_chore(from_version, to_version)
   submit_job_output = `bash ./cdc-versions/#{from_version}/bin/flink-cdc.sh --flink-home #{FLINK_HOME} #{yaml_job_file}`
   puts "   #{submit_job_output}"
   current_job_id = submit_job_output.split("\n")[1].split.last
-  raise StandardError.new("Failed to submit Flink job") unless current_job_id.length == 32
+  raise StandardError, 'Failed to submit Flink job' unless current_job_id.length == 32
+
   puts "   Current Job ID: #{current_job_id}"
 
   # Verify if data sync works
@@ -75,7 +76,8 @@ def test_migration_chore(from_version, to_version)
   submit_job_output = `bash ./cdc-versions/#{to_version}/bin/flink-cdc.sh --from-savepoint #{Dir.pwd}/savepoints/#{savepoint_file} --allow-nonRestored-state --flink-home #{FLINK_HOME} #{yaml_job_file}`
   puts "   #{submit_job_output}"
   new_job_id = submit_job_output.split("\n")[1].split.last
-  raise StandardError.new("Failed to submit Flink job") unless new_job_id.length == 32
+  raise StandardError, 'Failed to submit Flink job' unless new_job_id.length == 32
+
   puts "   Upgraded Job ID: #{new_job_id}"
 
   # Verify if data sync works
