@@ -28,9 +28,7 @@ import org.apache.flink.cdc.runtime.typeutils.DataTypeConverter;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * The processor of pre-transform projection in {@link PreTransformOperator}.
@@ -47,7 +45,7 @@ public class PreTransformProcessor {
     private TableChangeInfo tableChangeInfo;
     private TransformProjection transformProjection;
     private @Nullable TransformFilter transformFilter;
-    private Set<String> cachedProjectionColumns;
+    private List<Boolean> cachedProjectionColumnsState;
 
     public PreTransformProcessor(
             TableChangeInfo tableChangeInfo,
@@ -56,7 +54,7 @@ public class PreTransformProcessor {
         this.tableChangeInfo = tableChangeInfo;
         this.transformProjection = transformProjection;
         this.transformFilter = transformFilter;
-        this.cachedProjectionColumns =
+        this.cachedProjectionColumnsState =
                 cacheIsProjectionColumnMap(tableChangeInfo, transformProjection);
     }
 
@@ -82,19 +80,21 @@ public class PreTransformProcessor {
 
     public BinaryRecordData processFillDataField(BinaryRecordData data) {
         List<Object> valueList = new ArrayList<>();
-        for (Column column : tableChangeInfo.getTransformedSchema().getColumns()) {
-            if (cachedProjectionColumns.contains(column.getName())) {
+        List<Column> columns = tableChangeInfo.getTransformedSchema().getColumns();
+
+        for (int i = 0; i < columns.size(); i++) {
+            if (cachedProjectionColumnsState.get(i)) {
                 valueList.add(null);
-                break;
             } else {
                 valueList.add(
                         getValueFromBinaryRecordData(
-                                column.getName(),
+                                columns.get(i).getName(),
                                 data,
                                 tableChangeInfo.getOriginalSchema().getColumns(),
                                 tableChangeInfo.getFieldGetters()));
             }
         }
+
         return tableChangeInfo.getRecordDataGenerator().generate(valueList.toArray(new Object[0]));
     }
 
@@ -112,21 +112,23 @@ public class PreTransformProcessor {
         return null;
     }
 
-    private Set<String> cacheIsProjectionColumnMap(
+    private List<Boolean> cacheIsProjectionColumnMap(
             TableChangeInfo tableChangeInfo, TransformProjection transformProjection) {
-        Set<String> cachedMap = new HashSet<>();
+        List<Boolean> cachedMap = new ArrayList<>();
         if (!hasTableChangeInfo()) {
             return cachedMap;
         }
 
         for (Column column : tableChangeInfo.getTransformedSchema().getColumns()) {
+            boolean isProjectionColumn = false;
             for (ProjectionColumn projectionColumn : transformProjection.getProjectionColumns()) {
                 if (column.getName().equals(projectionColumn.getColumnName())
                         && projectionColumn.isValidTransformedProjectionColumn()) {
-                    cachedMap.add(column.getName());
+                    isProjectionColumn = true;
                     break;
                 }
             }
+            cachedMap.add(isProjectionColumn);
         }
 
         return cachedMap;
