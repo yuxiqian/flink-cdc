@@ -139,8 +139,8 @@ public class SystemFunctionUtils {
                 return second.intValue() / (24 * 3600);
             case "MONTH":
                 return to.get(Calendar.YEAR) * 12
-                        + to.get(Calendar.MONDAY)
-                        - (from.get(Calendar.YEAR) * 12 + from.get(Calendar.MONDAY));
+                        + to.get(Calendar.MONTH)
+                        - (from.get(Calendar.YEAR) * 12 + from.get(Calendar.MONTH));
             case "YEAR":
                 return to.get(Calendar.YEAR) - from.get(Calendar.YEAR);
             default:

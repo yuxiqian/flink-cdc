@@ -561,16 +561,21 @@ public class PostTransformOperatorTest {
 
     @Test
     void testTimestampDiffTransform() throws Exception {
+        String localTimestamp = "TO_TIMESTAMP('2020-01-01 00:00:00')";
+        String currentTimestamp = "TO_TIMESTAMP('2019-12-31 16:00:00')";
+
         PostTransformOperator transform =
                 PostTransformOperator.newBuilder()
                         .addTransform(
                                 TIMESTAMPDIFF_TABLEID.identifier(),
-                                "col1, TIMESTAMP_DIFF('SECOND', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as second_diff,"
-                                        + " TIMESTAMP_DIFF('MINUTE', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as minute_diff,"
-                                        + " TIMESTAMP_DIFF('HOUR', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as hour_diff,"
-                                        + " TIMESTAMP_DIFF('DAY', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as day_diff,"
-                                        + " TIMESTAMP_DIFF('MONTH', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as month_diff,"
-                                        + " TIMESTAMP_DIFF('YEAR', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as year_diff",
+                                ("col1, TIMESTAMP_DIFF('SECOND', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as second_diff,"
+                                                + " TIMESTAMP_DIFF('MINUTE', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as minute_diff,"
+                                                + " TIMESTAMP_DIFF('HOUR', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as hour_diff,"
+                                                + " TIMESTAMP_DIFF('DAY', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as day_diff,"
+                                                + " TIMESTAMP_DIFF('MONTH', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as month_diff,"
+                                                + " TIMESTAMP_DIFF('YEAR', LOCALTIMESTAMP, CURRENT_TIMESTAMP) as year_diff")
+                                        .replace("LOCALTIMESTAMP", localTimestamp)
+                                        .replace("CURRENT_TIMESTAMP", currentTimestamp),
                                 null)
                         .addTimezone("GMT-8:00")
                         .build();
@@ -597,7 +602,7 @@ public class PostTransformOperatorTest {
                         TIMESTAMPDIFF_TABLEID,
                         recordDataGenerator.generate(
                                 new Object[] {
-                                    new BinaryStringData("1"), -28800, -480, -8, 0, 0, 0
+                                    new BinaryStringData("1"), -28800, -480, -8, 0, -1, -1
                                 }));
         transform.processElement(new StreamRecord<>(createTableEvent));
         Assertions.assertThat(
