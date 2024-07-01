@@ -21,7 +21,6 @@ import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.OperatorStateStore;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.cdc.common.data.binary.BinaryRecordData;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
@@ -44,51 +43,63 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-/** A schema process function that applies user-defined transform logics. */
-public class TransformSchemaOperator extends AbstractStreamOperator<Event>
+/**
+ * A data process function that filters out columns which aren't (directly & indirectly) referenced.
+ */
+public class PreTransformOperator extends AbstractStreamOperator<Event>
         implements OneInputStreamOperator<Event, Event> {
 
-    private final List<Tuple5<String, String, String, String, String>> transformRules;
-    private transient List<Tuple2<Selectors, Optional<TransformProjection>>> transforms;
+    private final List<TransformRule> transformRules;
+    private transient List<PreTransformers> transforms;
     private final Map<TableId, TableChangeInfo> tableChangeInfoMap;
-    private transient Map<TableId, TransformProjectionProcessor> processorMap;
     private final List<Tuple2<Selectors, SchemaMetadataTransform>> schemaMetadataTransformers;
     private transient ListState<byte[]> state;
+    private Map<TableId, PreTransformProcessor> preTransformProcessorMap;
 
-    public static TransformSchemaOperator.Builder newBuilder() {
-        return new TransformSchemaOperator.Builder();
+    public static PreTransformOperator.Builder newBuilder() {
+        return new PreTransformOperator.Builder();
     }
 
-    /** Builder of {@link TransformSchemaOperator}. */
+    /** Builder of {@link PreTransformOperator}. */
     public static class Builder {
-        private final List<Tuple5<String, String, String, String, String>> transformRules =
-                new ArrayList<>();
+        private final List<TransformRule> transformRules = new ArrayList<>();
 
-        public TransformSchemaOperator.Builder addTransform(
+        public PreTransformOperator.Builder addTransform(
+                String tableInclusions, @Nullable String projection, @Nullable String filter) {
+            transformRules.add(new TransformRule(tableInclusions, projection, filter, "", "", ""));
+            return this;
+        }
+
+        public PreTransformOperator.Builder addTransform(
                 String tableInclusions,
                 @Nullable String projection,
+                @Nullable String filter,
                 String primaryKey,
                 String partitionKey,
                 String tableOption) {
             transformRules.add(
-                    Tuple5.of(tableInclusions, projection, primaryKey, partitionKey, tableOption));
+                    new TransformRule(
+                            tableInclusions,
+                            projection,
+                            filter,
+                            primaryKey,
+                            partitionKey,
+                            tableOption));
             return this;
         }
 
-        public TransformSchemaOperator build() {
-            return new TransformSchemaOperator(transformRules);
+        public PreTransformOperator build() {
+            return new PreTransformOperator(transformRules);
         }
     }
 
-    private TransformSchemaOperator(
-            List<Tuple5<String, String, String, String, String>> transformRules) {
+    private PreTransformOperator(List<TransformRule> transformRules) {
         this.transformRules = transformRules;
         this.tableChangeInfoMap = new ConcurrentHashMap<>();
-        this.processorMap = new ConcurrentHashMap<>();
+        this.preTransformProcessorMap = new ConcurrentHashMap<>();
         this.schemaMetadataTransformers = new ArrayList<>();
         this.chainingStrategy = ChainingStrategy.ALWAYS;
     }
@@ -97,21 +108,26 @@ public class TransformSchemaOperator extends AbstractStreamOperator<Event>
     public void open() throws Exception {
         super.open();
         transforms = new ArrayList<>();
-        for (Tuple5<String, String, String, String, String> transformRule : transformRules) {
-            String tableInclusions = transformRule.f0;
-            String projection = transformRule.f1;
-            String primaryKeys = transformRule.f2;
-            String partitionKeys = transformRule.f3;
-            String tableOptions = transformRule.f4;
+        for (TransformRule transformRule : transformRules) {
+            String tableInclusions = transformRule.getTableInclusions();
+            String projection = transformRule.getProjection();
+            String filter = transformRule.getFilter();
+            String primaryKeys = transformRule.getPrimaryKey();
+            String partitionKeys = transformRule.getPartitionKey();
+            String tableOptions = transformRule.getTableOption();
             Selectors selectors =
                     new Selectors.SelectorsBuilder().includeTables(tableInclusions).build();
-            transforms.add(new Tuple2<>(selectors, TransformProjection.of(projection)));
+            transforms.add(
+                    new PreTransformers(
+                            selectors,
+                            TransformProjection.of(projection).orElse(null),
+                            TransformFilter.of(filter).orElse(null)));
             schemaMetadataTransformers.add(
                     new Tuple2<>(
                             selectors,
                             new SchemaMetadataTransform(primaryKeys, partitionKeys, tableOptions)));
         }
-        this.processorMap = new ConcurrentHashMap<>();
+        this.preTransformProcessorMap = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -197,6 +213,7 @@ public class TransformSchemaOperator extends AbstractStreamOperator<Event>
 
     private CreateTableEvent transformCreateTableEvent(CreateTableEvent createTableEvent) {
         TableId tableId = createTableEvent.tableId();
+        TableChangeInfo tableChangeInfo = tableChangeInfoMap.get(tableId);
 
         for (Tuple2<Selectors, SchemaMetadataTransform> transform : schemaMetadataTransformers) {
             Selectors selectors = transform.f0;
@@ -209,19 +226,22 @@ public class TransformSchemaOperator extends AbstractStreamOperator<Event>
             }
         }
 
-        for (Tuple2<Selectors, Optional<TransformProjection>> transform : transforms) {
-            Selectors selectors = transform.f0;
-            if (selectors.isMatch(tableId) && transform.f1.isPresent()) {
-                TransformProjection transformProjection = transform.f1.get();
+        for (PreTransformers transform : transforms) {
+            Selectors selectors = transform.getSelectors();
+            if (selectors.isMatch(tableId) && transform.getProjection().isPresent()) {
+                TransformProjection transformProjection = transform.getProjection().get();
+                TransformFilter transformFilter = transform.getFilter().orElse(null);
                 if (transformProjection.isValid()) {
-                    if (!processorMap.containsKey(tableId)) {
-                        processorMap.put(
-                                tableId, TransformProjectionProcessor.of(transformProjection));
+                    if (!preTransformProcessorMap.containsKey(tableId)) {
+                        preTransformProcessorMap.put(
+                                tableId,
+                                new PreTransformProcessor(
+                                        tableChangeInfo, transformProjection, transformFilter));
                     }
-                    TransformProjectionProcessor transformProjectionProcessor =
-                            processorMap.get(tableId);
-                    // update the columns of projection and add the column of projection into Schema
-                    return transformProjectionProcessor.processCreateTableEvent(createTableEvent);
+                    PreTransformProcessor preTransformProcessor =
+                            preTransformProcessorMap.get(tableId);
+                    // filter out unreferenced columns in pre-transform process
+                    return preTransformProcessor.preTransformCreateTableEvent(createTableEvent);
                 }
             }
         }
@@ -252,12 +272,14 @@ public class TransformSchemaOperator extends AbstractStreamOperator<Event>
     private DataChangeEvent processDataChangeEvent(DataChangeEvent dataChangeEvent)
             throws Exception {
         TableId tableId = dataChangeEvent.tableId();
-        for (Tuple2<Selectors, Optional<TransformProjection>> transform : transforms) {
-            Selectors selectors = transform.f0;
-            if (selectors.isMatch(tableId) && transform.f1.isPresent()) {
-                TransformProjection transformProjection = transform.f1.get();
+        for (PreTransformers transform : transforms) {
+            Selectors selectors = transform.getSelectors();
+
+            if (selectors.isMatch(tableId) && transform.getProjection().isPresent()) {
+                TransformProjection transformProjection = transform.getProjection().get();
+                TransformFilter transformFilter = transform.getFilter().orElse(null);
                 if (transformProjection.isValid()) {
-                    return processProjection(transformProjection, dataChangeEvent);
+                    return processProjection(transformProjection, transformFilter, dataChangeEvent);
                 }
             }
         }
@@ -265,25 +287,27 @@ public class TransformSchemaOperator extends AbstractStreamOperator<Event>
     }
 
     private DataChangeEvent processProjection(
-            TransformProjection transformProjection, DataChangeEvent dataChangeEvent)
-            throws Exception {
+            TransformProjection transformProjection,
+            @Nullable TransformFilter transformFilter,
+            DataChangeEvent dataChangeEvent) {
         TableId tableId = dataChangeEvent.tableId();
         TableChangeInfo tableChangeInfo = tableChangeInfoMap.get(tableId);
-        if (!processorMap.containsKey(tableId) || !processorMap.get(tableId).hasTableChangeInfo()) {
-            processorMap.put(
-                    tableId, TransformProjectionProcessor.of(tableChangeInfo, transformProjection));
+        if (!preTransformProcessorMap.containsKey(tableId)
+                || !preTransformProcessorMap.get(tableId).hasTableChangeInfo()) {
+            preTransformProcessorMap.put(
+                    tableId,
+                    new PreTransformProcessor(
+                            tableChangeInfo, transformProjection, transformFilter));
         }
-        TransformProjectionProcessor transformProjectionProcessor = processorMap.get(tableId);
+        PreTransformProcessor preTransformProcessor = preTransformProcessorMap.get(tableId);
         BinaryRecordData before = (BinaryRecordData) dataChangeEvent.before();
         BinaryRecordData after = (BinaryRecordData) dataChangeEvent.after();
         if (before != null) {
-            BinaryRecordData projectedBefore =
-                    transformProjectionProcessor.processFillDataField(before);
+            BinaryRecordData projectedBefore = preTransformProcessor.processFillDataField(before);
             dataChangeEvent = DataChangeEvent.projectBefore(dataChangeEvent, projectedBefore);
         }
         if (after != null) {
-            BinaryRecordData projectedAfter =
-                    transformProjectionProcessor.processFillDataField(after);
+            BinaryRecordData projectedAfter = preTransformProcessor.processFillDataField(after);
             dataChangeEvent = DataChangeEvent.projectAfter(dataChangeEvent, projectedAfter);
         }
         return dataChangeEvent;
@@ -291,7 +315,7 @@ public class TransformSchemaOperator extends AbstractStreamOperator<Event>
 
     private void clearOperator() {
         this.transforms = null;
-        this.processorMap = null;
+        this.preTransformProcessorMap = null;
         this.state = null;
     }
 }

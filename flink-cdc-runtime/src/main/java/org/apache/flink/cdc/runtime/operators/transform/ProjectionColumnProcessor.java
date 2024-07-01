@@ -75,29 +75,35 @@ public class ProjectionColumnProcessor {
 
     private Object[] generateParams(BinaryRecordData after, long epochTime) {
         List<Object> params = new ArrayList<>();
-        List<Column> columns = tableInfo.getSchema().getColumns();
-        RecordData.FieldGetter[] fieldGetters = tableInfo.getFieldGetters();
+        List<Column> columns = tableInfo.getOriginalSchema().getColumns();
+        RecordData.FieldGetter[] fieldGetters = tableInfo.getOriginalFieldGetters();
         for (String originalColumnName : projectionColumn.getOriginalColumnNames()) {
-            if (originalColumnName.equals(TransformParser.DEFAULT_NAMESPACE_NAME)) {
-                params.add(tableInfo.getNamespace());
-                continue;
+            switch (originalColumnName) {
+                case TransformParser.DEFAULT_NAMESPACE_NAME:
+                    params.add(tableInfo.getNamespace());
+                    continue;
+                case TransformParser.DEFAULT_SCHEMA_NAME:
+                    params.add(tableInfo.getSchemaName());
+                    continue;
+                case TransformParser.DEFAULT_TABLE_NAME:
+                    params.add(tableInfo.getTableName());
+                    continue;
             }
-            if (originalColumnName.equals(TransformParser.DEFAULT_SCHEMA_NAME)) {
-                params.add(tableInfo.getSchemaName());
-                continue;
-            }
-            if (originalColumnName.equals(TransformParser.DEFAULT_TABLE_NAME)) {
-                params.add(tableInfo.getTableName());
-                continue;
-            }
+
+            boolean argumentFound = false;
             for (int i = 0; i < columns.size(); i++) {
                 Column column = columns.get(i);
                 if (column.getName().equals(originalColumnName)) {
                     params.add(
                             DataTypeConverter.convertToOriginal(
                                     fieldGetters[i].getFieldOrNull(after), column.getType()));
+                    argumentFound = true;
                     break;
                 }
+            }
+            if (!argumentFound) {
+                throw new IllegalArgumentException(
+                        "Failed to evaluate argument " + originalColumnName);
             }
         }
         params.add(timezone);
@@ -108,12 +114,11 @@ public class ProjectionColumnProcessor {
     private TransformExpressionKey generateTransformExpressionKey() {
         List<String> argumentNames = new ArrayList<>();
         List<Class<?>> paramTypes = new ArrayList<>();
-        List<Column> columns = tableInfo.getSchema().getColumns();
+        List<Column> columns = tableInfo.getOriginalSchema().getColumns();
         String scriptExpression = projectionColumn.getScriptExpression();
         List<String> originalColumnNames = projectionColumn.getOriginalColumnNames();
         for (String originalColumnName : originalColumnNames) {
-            for (int i = 0; i < columns.size(); i++) {
-                Column column = columns.get(i);
+            for (Column column : columns) {
                 if (column.getName().equals(originalColumnName)) {
                     argumentNames.add(originalColumnName);
                     paramTypes.add(DataTypeConverter.convertOriginalClass(column.getType()));

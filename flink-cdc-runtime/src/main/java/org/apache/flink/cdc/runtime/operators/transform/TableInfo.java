@@ -31,16 +31,22 @@ public class TableInfo {
     private TableId tableId;
     private Schema schema;
     private RecordData.FieldGetter[] fieldGetters;
+    private Schema originalSchema;
+    private RecordData.FieldGetter[] originalFieldGetters;
     private BinaryRecordDataGenerator recordDataGenerator;
 
     public TableInfo(
             TableId tableId,
             Schema schema,
             RecordData.FieldGetter[] fieldGetters,
+            Schema originalSchema,
+            RecordData.FieldGetter[] originalFieldGetters,
             BinaryRecordDataGenerator recordDataGenerator) {
         this.tableId = tableId;
         this.schema = schema;
         this.fieldGetters = fieldGetters;
+        this.originalSchema = originalSchema;
+        this.originalFieldGetters = originalFieldGetters;
         this.recordDataGenerator = recordDataGenerator;
     }
 
@@ -68,23 +74,40 @@ public class TableInfo {
         return schema;
     }
 
+    public Schema getOriginalSchema() {
+        return originalSchema;
+    }
+
     public RecordData.FieldGetter[] getFieldGetters() {
         return fieldGetters;
+    }
+
+    public RecordData.FieldGetter[] getOriginalFieldGetters() {
+        return originalFieldGetters;
     }
 
     public BinaryRecordDataGenerator getRecordDataGenerator() {
         return recordDataGenerator;
     }
 
-    public static TableInfo of(TableId tableId, Schema schema) {
-        List<RecordData.FieldGetter> fieldGetters =
-                SchemaUtils.createFieldGetters(schema.getColumns());
-        BinaryRecordDataGenerator recordDataGenerator =
-                new BinaryRecordDataGenerator(DataTypeConverter.toRowType(schema.getColumns()));
+    public static TableInfo of(TableId tableId, Schema projectedSchema, Schema originalSchema) {
+
+        List<RecordData.FieldGetter> projectedFieldGetters =
+                SchemaUtils.createFieldGetters(projectedSchema.getColumns());
+
+        List<RecordData.FieldGetter> originalFieldGetters =
+                SchemaUtils.createFieldGetters(originalSchema.getColumns());
+
+        BinaryRecordDataGenerator projectedRecordDataGenerator =
+                new BinaryRecordDataGenerator(
+                        DataTypeConverter.toRowType(projectedSchema.getColumns()));
+
         return new TableInfo(
                 tableId,
-                schema,
-                fieldGetters.toArray(new RecordData.FieldGetter[0]),
-                recordDataGenerator);
+                projectedSchema,
+                projectedFieldGetters.toArray(new RecordData.FieldGetter[0]),
+                originalSchema,
+                originalFieldGetters.toArray(new RecordData.FieldGetter[0]),
+                projectedRecordDataGenerator);
     }
 }
