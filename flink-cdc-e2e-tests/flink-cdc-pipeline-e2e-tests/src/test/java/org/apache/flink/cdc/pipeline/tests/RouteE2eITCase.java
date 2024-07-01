@@ -22,7 +22,6 @@ import org.apache.flink.cdc.connectors.mysql.testutils.MySqlContainer;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlVersion;
 import org.apache.flink.cdc.connectors.mysql.testutils.UniqueDatabase;
 import org.apache.flink.cdc.pipeline.tests.utils.PipelineTestEnvironment;
-import org.apache.flink.cdc.runtime.operators.transform.TransformSchemaOperator;
 
 import org.junit.After;
 import org.junit.Assert;
@@ -43,7 +42,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 
-/** E2e tests for the {@link TransformSchemaOperator}. */
+/** E2e tests for routing features. */
 @RunWith(Parameterized.class)
 public class RouteE2eITCase extends PipelineTestEnvironment {
     private static final Logger LOG = LoggerFactory.getLogger(RouteE2eITCase.class);

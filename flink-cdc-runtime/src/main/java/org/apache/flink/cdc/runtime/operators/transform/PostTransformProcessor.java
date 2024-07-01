@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,6 +57,7 @@ public class PostTransformProcessor {
     private @Nullable TransformFilter transformFilter;
     private String timezone;
     private Map<String, ProjectionColumnProcessor> projectionColumnProcessorMap;
+    private Map<String, ProjectionColumn> cachedProjectionColumns;
 
     public PostTransformProcessor(
             TableInfo tableInfo,
@@ -69,6 +71,7 @@ public class PostTransformProcessor {
         this.transformFilter = transformFilter;
         this.timezone = timezone;
         this.projectionColumnProcessorMap = new ConcurrentHashMap<>();
+        this.cachedProjectionColumns = cacheProjectionColumnMap(tableInfo, transformProjection);
     }
 
     public boolean hasTableChangeInfo() {
@@ -112,82 +115,31 @@ public class PostTransformProcessor {
                         .collect(Collectors.toList()));
     }
 
-    public BinaryRecordData processData(BinaryRecordData after, long epochTime) {
+    public BinaryRecordData processData(BinaryRecordData payload, long epochTime) {
         List<Object> valueList = new ArrayList<>();
         for (Column column : tableInfo.getSchema().getColumns()) {
-            boolean isProjectionColumn = false;
-            for (ProjectionColumn projectionColumn : transformProjection.getProjectionColumns()) {
-                if (column.getName().equals(projectionColumn.getColumnName())
-                        && projectionColumn.isValidTransformedProjectionColumn()) {
-                    if (!projectionColumnProcessorMap.containsKey(
-                            projectionColumn.getColumnName())) {
-                        projectionColumnProcessorMap.put(
-                                projectionColumn.getColumnName(),
-                                ProjectionColumnProcessor.of(
-                                        tableInfo, projectionColumn, timezone));
-                    }
-                    ProjectionColumnProcessor projectionColumnProcessor =
-                            projectionColumnProcessorMap.get(projectionColumn.getColumnName());
-                    valueList.add(
-                            DataTypeConverter.convert(
-                                    projectionColumnProcessor.evaluate(after, epochTime),
-                                    projectionColumn.getDataType()));
-                    isProjectionColumn = true;
-                    break;
-                }
-            }
-            if (!isProjectionColumn) {
+            ProjectionColumn projectionColumn = cachedProjectionColumns.get(column.getName());
+            if (cachedProjectionColumns.containsKey(column.getName())) {
+                projectionColumnProcessorMap.putIfAbsent(
+                        projectionColumn.getColumnName(),
+                        ProjectionColumnProcessor.of(tableInfo, projectionColumn, timezone));
+                ProjectionColumnProcessor projectionColumnProcessor =
+                        projectionColumnProcessorMap.get(projectionColumn.getColumnName());
+                valueList.add(
+                        DataTypeConverter.convert(
+                                projectionColumnProcessor.evaluate(payload, epochTime),
+                                projectionColumn.getDataType()));
+            } else {
                 valueList.add(
                         getValueFromBinaryRecordData(
                                 column.getName(),
                                 column.getType(),
-                                after,
+                                payload,
                                 tableInfo.getOriginalSchema().getColumns(),
                                 tableInfo.getOriginalFieldGetters()));
             }
         }
-        return tableInfo
-                .getRecordDataGenerator()
-                .generate(valueList.toArray(new Object[valueList.size()]));
-    }
-
-    public BinaryRecordData preProcessData(BinaryRecordData after, long epochTime) {
-        List<Object> valueList = new ArrayList<>();
-        for (Column column : tableInfo.getSchema().getColumns()) {
-            boolean isProjectionColumn = false;
-            for (ProjectionColumn projectionColumn : transformProjection.getProjectionColumns()) {
-                if (column.getName().equals(projectionColumn.getColumnName())
-                        && projectionColumn.isValidTransformedProjectionColumn()) {
-                    if (!projectionColumnProcessorMap.containsKey(
-                            projectionColumn.getColumnName())) {
-                        projectionColumnProcessorMap.put(
-                                projectionColumn.getColumnName(),
-                                ProjectionColumnProcessor.of(
-                                        tableInfo, projectionColumn, timezone));
-                    }
-                    ProjectionColumnProcessor projectionColumnProcessor =
-                            projectionColumnProcessorMap.get(projectionColumn.getColumnName());
-                    valueList.add(
-                            DataTypeConverter.convert(
-                                    projectionColumnProcessor.evaluate(after, epochTime),
-                                    projectionColumn.getDataType()));
-                    isProjectionColumn = true;
-                    break;
-                }
-            }
-            if (!isProjectionColumn) {
-                valueList.add(
-                        getValueFromBinaryRecordData(
-                                column.getName(),
-                                column.getType(),
-                                after,
-                                tableInfo.getSchema().getColumns(),
-                                tableInfo.getFieldGetters()));
-            }
-        }
-        return tableInfo
-                .getRecordDataGenerator()
-                .generate(valueList.toArray(new Object[valueList.size()]));
+        return tableInfo.getRecordDataGenerator().generate(valueList.toArray(new Object[0]));
     }
 
     private Object getValueFromBinaryRecordData(
@@ -203,5 +155,25 @@ public class PostTransformProcessor {
             }
         }
         return null;
+    }
+
+    private Map<String, ProjectionColumn> cacheProjectionColumnMap(
+            TableInfo tableInfo, TransformProjection transformProjection) {
+        Map<String, ProjectionColumn> cachedMap = new HashMap<>();
+        if (!hasTableInfo()) {
+            return cachedMap;
+        }
+
+        for (Column column : tableInfo.getSchema().getColumns()) {
+            for (ProjectionColumn projectionColumn : transformProjection.getProjectionColumns()) {
+                if (column.getName().equals(projectionColumn.getColumnName())
+                        && projectionColumn.isValidTransformedProjectionColumn()) {
+                    cachedMap.put(column.getName(), projectionColumn);
+                    break;
+                }
+            }
+        }
+
+        return cachedMap;
     }
 }

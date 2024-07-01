@@ -28,7 +28,9 @@ import org.apache.flink.cdc.runtime.typeutils.DataTypeConverter;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The processor of pre-transform projection in {@link PreTransformOperator}.
@@ -45,6 +47,7 @@ public class PreTransformProcessor {
     private TableChangeInfo tableChangeInfo;
     private TransformProjection transformProjection;
     private @Nullable TransformFilter transformFilter;
+    private Set<String> cachedProjectionColumns;
 
     public PreTransformProcessor(
             TableChangeInfo tableChangeInfo,
@@ -53,12 +56,20 @@ public class PreTransformProcessor {
         this.tableChangeInfo = tableChangeInfo;
         this.transformProjection = transformProjection;
         this.transformFilter = transformFilter;
+        this.cachedProjectionColumns =
+                cacheIsProjectionColumnMap(tableChangeInfo, transformProjection);
     }
 
     public boolean hasTableChangeInfo() {
         return this.tableChangeInfo != null;
     }
 
+    /**
+     * This method analyses (directly and indirectly) referenced columns, and peels unused columns
+     * from schema. For example, given original schema with columns (A, B, C, D, E) with projection
+     * rule (A, B + 1 as newB) and filtering rule (C > 0), a peeled schema containing (A, B, C) only
+     * will be sent to downstream, and (D, E) column along with corresponding data will be trimmed.
+     */
     public CreateTableEvent preTransformCreateTableEvent(CreateTableEvent createTableEvent) {
         List<Column> preTransformColumns =
                 TransformParser.generateReferencedColumns(
@@ -72,16 +83,10 @@ public class PreTransformProcessor {
     public BinaryRecordData processFillDataField(BinaryRecordData data) {
         List<Object> valueList = new ArrayList<>();
         for (Column column : tableChangeInfo.getTransformedSchema().getColumns()) {
-            boolean isProjectionColumn = false;
-            for (ProjectionColumn projectionColumn : transformProjection.getProjectionColumns()) {
-                if (column.getName().equals(projectionColumn.getColumnName())
-                        && projectionColumn.isValidTransformedProjectionColumn()) {
-                    valueList.add(null);
-                    isProjectionColumn = true;
-                    break;
-                }
-            }
-            if (!isProjectionColumn) {
+            if (cachedProjectionColumns.contains(column.getName())) {
+                valueList.add(null);
+                break;
+            } else {
                 valueList.add(
                         getValueFromBinaryRecordData(
                                 column.getName(),
@@ -90,9 +95,7 @@ public class PreTransformProcessor {
                                 tableChangeInfo.getFieldGetters()));
             }
         }
-        return tableChangeInfo
-                .getRecordDataGenerator()
-                .generate(valueList.toArray(new Object[valueList.size()]));
+        return tableChangeInfo.getRecordDataGenerator().generate(valueList.toArray(new Object[0]));
     }
 
     private Object getValueFromBinaryRecordData(
@@ -107,5 +110,25 @@ public class PreTransformProcessor {
             }
         }
         return null;
+    }
+
+    private Set<String> cacheIsProjectionColumnMap(
+            TableChangeInfo tableChangeInfo, TransformProjection transformProjection) {
+        Set<String> cachedMap = new HashSet<>();
+        if (!hasTableChangeInfo()) {
+            return cachedMap;
+        }
+
+        for (Column column : tableChangeInfo.getTransformedSchema().getColumns()) {
+            for (ProjectionColumn projectionColumn : transformProjection.getProjectionColumns()) {
+                if (column.getName().equals(projectionColumn.getColumnName())
+                        && projectionColumn.isValidTransformedProjectionColumn()) {
+                    cachedMap.add(column.getName());
+                    break;
+                }
+            }
+        }
+
+        return cachedMap;
     }
 }
