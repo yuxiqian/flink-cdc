@@ -167,6 +167,11 @@ public class DataChangeEvent implements ChangeEvent, Serializable {
                 dataChangeEvent.meta);
     }
 
+    /** Copy current DataChangeEvent with specified newTableId. */
+    public DataChangeEvent copy(TableId newTableId) {
+        return new DataChangeEvent(newTableId, before, after, op, meta);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {

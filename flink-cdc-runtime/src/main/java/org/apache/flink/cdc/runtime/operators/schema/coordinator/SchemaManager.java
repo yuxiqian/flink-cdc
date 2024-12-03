@@ -164,6 +164,12 @@ public class SchemaManager {
                             // It has been applied if such table does not exist
                             return !latestSchema.isPresent();
                         },
+                        emplaceTableSchemaEvent -> {
+                            throw new IllegalStateException(
+                                    "Emplace table schema event "
+                                            + emplaceTableSchemaEvent
+                                            + " shouldn't be presented in SchemaManager context.");
+                        },
                         renameColumnEvent -> {
                             // It has been applied if such table already exists
                             if (!latestSchema.isPresent()) {
@@ -280,6 +286,10 @@ public class SchemaManager {
                     schemaChangeEvent.tableId(),
                     SchemaUtils.applySchemaChangeEvent(optionalSchema.get(), schemaChangeEvent));
         }
+    }
+
+    public void emplaceEvolvedSchema(TableId tableId, Schema schema) {
+        registerNewSchema(evolvedSchemas, tableId, schema);
     }
 
     @Override
