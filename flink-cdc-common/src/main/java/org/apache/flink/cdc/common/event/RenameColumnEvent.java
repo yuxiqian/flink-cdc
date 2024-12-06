@@ -41,7 +41,15 @@ public class RenameColumnEvent implements SchemaChangeEvent {
         this.nameMapping = nameMapping;
     }
 
-    /** Returns the name mapping. */
+    @Override
+    public SchemaChangeEvent copy(TableId newTableId) {
+        return new RenameColumnEvent(newTableId, nameMapping);
+    }
+
+    /**
+     * Returns the name mapping. Key => column name before changing, value => column name after
+     * changing.
+     */
     public Map<String, String> getNameMapping() {
         return nameMapping;
     }

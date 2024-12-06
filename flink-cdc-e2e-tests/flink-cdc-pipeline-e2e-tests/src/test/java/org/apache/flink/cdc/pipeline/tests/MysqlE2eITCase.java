@@ -97,7 +97,7 @@ public class MysqlE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "\n"
                                 + "sink:\n"
@@ -205,7 +205,7 @@ public class MysqlE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "\n"
                                 + "sink:\n"
@@ -374,7 +374,7 @@ public class MysqlE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "  scan.startup.mode: specific-offset\n"
                                 + "  scan.startup.specific-offset.file: %s\n"
@@ -400,16 +400,10 @@ public class MysqlE2eITCase extends PipelineTestEnvironment {
         submitPipelineJob(pipelineJob, mysqlCdcJar, valuesCdcJar, mysqlDriverJar);
         waitUntilJobRunning(Duration.ofSeconds(30));
         LOG.info("Pipeline job is running");
-        waitUntilSpecificEvent(
-                String.format(
-                        "Table %s.live_fast received SchemaChangeEvent DropTableEvent{tableId=%s.live_fast} and start to be blocked.",
-                        mysqlInventoryDatabase.getDatabaseName(),
-                        mysqlInventoryDatabase.getDatabaseName()));
 
-        waitUntilSpecificEvent(
-                String.format(
-                        "Schema change event DropTableEvent{tableId=%s.live_fast} has been handled in another subTask already.",
-                        mysqlInventoryDatabase.getDatabaseName()));
+        validateResult(
+                "CreateTableEvent{tableId=%s.customers, schema=columns={`id` INT NOT NULL,`name` VARCHAR(255) NOT NULL 'flink',`address` VARCHAR(1024),`phone_number` VARCHAR(512)}, primaryKeys=id, options=()}",
+                "CreateTableEvent{tableId=%s.products, schema=columns={`id` INT NOT NULL,`name` VARCHAR(255) NOT NULL 'flink',`description` VARCHAR(512),`weight` FLOAT,`enum_c` STRING 'red',`json_c` STRING,`point_c` STRING}, primaryKeys=id, options=()}");
     }
 
     private void validateResult(String... expectedEvents) throws Exception {
