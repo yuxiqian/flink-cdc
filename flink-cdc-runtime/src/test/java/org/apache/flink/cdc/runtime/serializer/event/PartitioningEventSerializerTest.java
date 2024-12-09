@@ -20,7 +20,6 @@ package org.apache.flink.cdc.runtime.serializer.event;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.FlushEvent;
-import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.runtime.partitioning.PartitioningEvent;
 import org.apache.flink.cdc.runtime.serializer.SerializerTestBase;
 
@@ -51,9 +50,7 @@ class PartitioningEventSerializerTest extends SerializerTestBase<PartitioningEve
     protected PartitioningEvent[] getTestData() {
         Event[] flushEvents =
                 new Event[] {
-                    new FlushEvent(TableId.tableId("table")),
-                    new FlushEvent(TableId.tableId("schema", "table")),
-                    new FlushEvent(TableId.tableId("namespace", "schema", "table"))
+                    FlushEvent.getInstance(), FlushEvent.getInstance(), FlushEvent.getInstance()
                 };
         Event[] dataChangeEvents = new DataChangeEventSerializerTest().getTestData();
         Event[] schemaChangeEvents = new SchemaChangeEventSerializerTest().getTestData();
@@ -62,15 +59,15 @@ class PartitioningEventSerializerTest extends SerializerTestBase<PartitioningEve
 
         partitioningEvents.addAll(
                 Arrays.stream(flushEvents)
-                        .map(event -> new PartitioningEvent(event, 1))
+                        .map(event -> new PartitioningEvent(event, 0, 1))
                         .collect(Collectors.toList()));
         partitioningEvents.addAll(
                 Arrays.stream(dataChangeEvents)
-                        .map(event -> new PartitioningEvent(event, 2))
+                        .map(event -> new PartitioningEvent(event, 1, 2))
                         .collect(Collectors.toList()));
         partitioningEvents.addAll(
                 Arrays.stream(schemaChangeEvents)
-                        .map(event -> new PartitioningEvent(event, 3))
+                        .map(event -> new PartitioningEvent(event, 2, 3))
                         .collect(Collectors.toList()));
 
         return partitioningEvents.toArray(new PartitioningEvent[0]);

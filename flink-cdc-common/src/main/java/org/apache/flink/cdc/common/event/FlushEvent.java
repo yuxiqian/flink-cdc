@@ -17,23 +17,18 @@
 
 package org.apache.flink.cdc.common.event;
 
-import java.util.Objects;
-
 /**
  * An {@link Event} from {@code SchemaOperator} to notify {@code DataSinkWriterOperator} that it
- * start flushing.
+ * start flushing. It is a singleton class that carries no extra information at all.
  */
 public class FlushEvent implements Event {
+    private static final FlushEvent INSTANCE = new FlushEvent();
 
-    /** The schema changes from which table. */
-    private final TableId tableId;
+    // Direct instantiation is not allowed.
+    protected FlushEvent() {}
 
-    public FlushEvent(TableId tableId) {
-        this.tableId = tableId;
-    }
-
-    public TableId getTableId() {
-        return tableId;
+    public static FlushEvent getInstance() {
+        return INSTANCE;
     }
 
     @Override
@@ -41,15 +36,11 @@ public class FlushEvent implements Event {
         if (this == o) {
             return true;
         }
-        if (!(o instanceof FlushEvent)) {
-            return false;
-        }
-        FlushEvent that = (FlushEvent) o;
-        return Objects.equals(tableId, that.tableId);
+        return o instanceof FlushEvent;
     }
 
     @Override
-    public int hashCode() {
-        return Objects.hash(tableId);
+    public String toString() {
+        return "FlushEvent{}";
     }
 }

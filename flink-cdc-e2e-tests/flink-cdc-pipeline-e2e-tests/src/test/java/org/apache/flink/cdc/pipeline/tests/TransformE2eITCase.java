@@ -104,7 +104,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -186,7 +186,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "\n"
                                 + "sink:\n"
@@ -275,7 +275,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -357,7 +357,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -440,7 +440,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -527,7 +527,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -608,7 +608,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.TABLEALPHA\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -684,7 +684,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -766,7 +766,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.\\.*\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "\n"
                                 + "sink:\n"
@@ -805,7 +805,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.TABLEALPHA\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -904,7 +904,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.TABLEALPHA\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -1011,7 +1011,7 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
                                 + "  username: %s\n"
                                 + "  password: %s\n"
                                 + "  tables: %s.TABLEALPHA\n"
-                                + "  server-id: 5400-5404\n"
+                                + "  server-id: 5400-5410\n"
                                 + "  server-time-zone: UTC\n"
                                 + "sink:\n"
                                 + "  type: values\n"
@@ -1177,10 +1177,16 @@ public class TransformE2eITCase extends PipelineTestEnvironment {
     }
 
     boolean extractDataLines(String line) {
-        // In multiple parallelism mode, a prefix with subTaskId (like '1> ') will be appended.
-        // Should trim it before extracting data fields.
-        if (!line.startsWith("DataChangeEvent{", 3)) {
-            return false;
+        if (parallelism > 1) {
+            // In multiple parallelism mode, a prefix with subTaskId (like '1> ') will be appended.
+            // Should trim it before extracting data fields.
+            if (!line.startsWith("DataChangeEvent{", 3)) {
+                return false;
+            }
+        } else {
+            if (!line.startsWith("DataChangeEvent{")) {
+                return false;
+            }
         }
         Stream.of("before", "after")
                 .forEach(
