@@ -40,7 +40,6 @@ import org.apache.flink.cdc.common.types.ZonedTimestampType;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -74,10 +73,10 @@ public class SchemaUtils {
     }
 
     /** Restore original data fields from RecordData structure. */
-    public static List<Object> restoreOriginalData(
+    public static @Nullable List<Object> restoreOriginalData(
             @Nullable RecordData recordData, List<RecordData.FieldGetter> fieldGetters) {
         if (recordData == null) {
-            return Collections.emptyList();
+            return null;
         }
         List<Object> actualFields = new ArrayList<>();
         for (RecordData.FieldGetter fieldGetter : fieldGetters) {
@@ -285,6 +284,7 @@ public class SchemaUtils {
                 createTableEvent -> createTableEvent.getSchema(),
                 dropColumnEvent -> applyDropColumnEvent(dropColumnEvent, schema),
                 dropTableEvent -> schema,
+                emplaceTableSchemaEvent -> emplaceTableSchemaEvent.getSchema(),
                 renameColumnEvent -> applyRenameColumnEvent(renameColumnEvent, schema),
                 truncateTableEvent -> schema);
     }
