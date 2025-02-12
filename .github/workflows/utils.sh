@@ -24,8 +24,8 @@ function random_timezone() {
     local sgn=$(expr $RANDOM % 2)
     if [ $sgn -eq 0 ]
     then
-        echo "GMT+$hh:$mm"
+        echo "UTC+$hh:$mm"
     else
-        echo "GMT-$hh:$mm"
+        echo "UTC-$hh:$mm"
     fi
 }
