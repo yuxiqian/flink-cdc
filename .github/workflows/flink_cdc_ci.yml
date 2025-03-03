@@ -92,3 +92,8 @@ jobs:
     with:
       java-version: "[8]"
       flink-version: "['1.19.1', '1.20.0']"
+  benchmark:
+    name: Benchmark Tests
+    uses: ./.github/workflows/flink_cdc_benchmark.yml
+    with:
+      java-version: "[8]"
