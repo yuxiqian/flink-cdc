@@ -24,6 +24,7 @@ import org.apache.flink.cdc.benchmark.cases.VanillaPipeline;
 
 import org.junit.jupiter.api.Test;
 import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.results.format.ResultFormatType;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
@@ -44,6 +45,7 @@ class PipelineBenchmarkTest {
                         .warmupIterations(1)
                         .measurementIterations(5)
                         .forks(1)
+                        .resultFormat(ResultFormatType.JSON)
                         .build();
         new Runner(opt).run();
     }
