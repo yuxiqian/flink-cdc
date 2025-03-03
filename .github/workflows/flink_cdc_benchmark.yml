@@ -46,12 +46,12 @@ jobs:
         with:
           maven-version: 3.8.6
       - name: Run benchmark
-        run: mvn --no-snapshot-updates -B -DskipTests -pl flink-cdc-benchmark -am install && mvn -q --no-snapshot-updates -B -pl flink-cdc-benchmark verify | tee output.txt
+        run: mvn --no-snapshot-updates -B -DskipTests -pl flink-cdc-benchmark -am install && mvn -q --no-snapshot-updates -B -pl flink-cdc-benchmark verify
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: Flink CDC Benchmark
           tool: 'jmh'
-          output-file-path: output.txt
+          output-file-path: flink-cdc-benchmark/jmh-result.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-always: true
