@@ -79,7 +79,7 @@ public abstract class PolardbxSourceTestBase extends AbstractTestBaseJUnit4 {
                     .withStartupTimeout(Duration.ofMinutes(3));
 
     protected static String getHost() {
-        return POLARDBX_CONTAINER.getHost();
+        return "127.0.0.1";
     }
 
     protected static int getPort() {

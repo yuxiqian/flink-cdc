@@ -598,6 +598,8 @@ public class MySqlStreamingChangeEventSource
         QueryEventData command = unwrapData(event);
         LOGGER.debug("Received query command: {}", event);
         String sql = command.getSql().trim();
+        System.out.printf(
+                "$$>> Handling query event: %s\n  command: %s\n  SQL: %s\n", event, command, sql);
         if (sql.equalsIgnoreCase("BEGIN")) {
             // We are starting a new transaction ...
             offsetContext.startNextTransaction();
