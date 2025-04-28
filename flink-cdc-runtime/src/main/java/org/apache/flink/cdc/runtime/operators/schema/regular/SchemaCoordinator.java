@@ -419,15 +419,16 @@ public class SchemaCoordinator extends SchemaRegistry {
                     tableId, schemaManager.getLatestEvolvedSchema(tableId).orElse(null));
         }
 
-        // And returns all successfully applied schema change events to SchemaOperator.
-        responseFuture.complete(
-                wrap(new SchemaChangeResponse(appliedSchemaChangeEvents, refreshedEvolvedSchemas)));
-
         pendingRequests.remove(sourceSubTaskId);
+
         LOG.info(
                 "Finished handling schema change request from {}. Pending requests: {}",
                 sourceSubTaskId,
                 pendingRequests);
+
+        // And returns all successfully applied schema change events to SchemaOperator.
+        responseFuture.complete(
+                wrap(new SchemaChangeResponse(appliedSchemaChangeEvents, refreshedEvolvedSchemas)));
     }
 
     private boolean applyAndUpdateEvolvedSchemaChange(SchemaChangeEvent schemaChangeEvent) {
