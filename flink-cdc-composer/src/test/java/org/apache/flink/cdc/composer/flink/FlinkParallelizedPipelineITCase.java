@@ -53,6 +53,7 @@ import java.io.PrintStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -157,12 +158,17 @@ class FlinkParallelizedPipelineITCase {
 
     @ParameterizedTest
     @ValueSource(ints = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17})
-    void testRegularTablesSourceInMultipleParallelism(int repeatId) throws Exception {
-        runPipelineJob(
-                ValuesDataSink.SinkApi.SINK_V2,
-                MAX_PARALLELISM,
-                SourceTraits.REGULAR,
-                SchemaChangeBehavior.LENIENT);
+    void testRegularTablesSourceInMultipleParallelism(int repeatId) {
+        LOG.info("#{} ================================", repeatId);
+        try {
+            runPipelineJob(
+                    ValuesDataSink.SinkApi.SINK_V2,
+                    MAX_PARALLELISM,
+                    SourceTraits.REGULAR,
+                    SchemaChangeBehavior.LENIENT);
+        } catch (Exception e) {
+            Assertions.fail("No need to continue.", e);
+        }
 
         // Validate generated downstream schema
 
@@ -317,6 +323,8 @@ class FlinkParallelizedPipelineITCase {
 
         // Setup pipeline
         Configuration pipelineConfig = new Configuration();
+        pipelineConfig.set(
+                PipelineOptions.PIPELINE_SCHEMA_OPERATOR_RPC_TIMEOUT, Duration.ofMinutes(1));
         pipelineConfig.set(PipelineOptions.PIPELINE_PARALLELISM, parallelism);
         pipelineConfig.set(PipelineOptions.PIPELINE_SCHEMA_CHANGE_BEHAVIOR, exception);
         PipelineDef pipelineDef =
