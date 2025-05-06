@@ -32,14 +32,11 @@ import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.util.TestLogger;
 
 import com.fasterxml.jackson.core.Version;
-import com.github.dockerjava.api.DockerClient;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
@@ -168,46 +165,6 @@ public abstract class FlinkContainerTestEnvironment extends TestLogger {
             taskManager.stop();
         }
         mysqlInventoryDatabase.dropDatabase();
-    }
-
-    @AfterAll
-    public static void afterClass() {
-        DockerClient dockerClient = DockerClientFactory.instance().client();
-
-        // List all containers and remove the ones that are not testcontainers related.
-        dockerClient.listContainersCmd().exec().stream()
-                .filter(container -> !container.getImage().startsWith("testcontainers"))
-                .forEach(
-                        container -> {
-                            dockerClient.stopContainerCmd(container.getId()).exec();
-                            dockerClient.removeContainerCmd(container.getId()).exec();
-                        });
-
-        // List all images and remove the ones that are not Flink, MySQL, and TestContainers
-        // related.
-        dockerClient.listImagesCmd().exec().stream()
-                .filter(
-                        image ->
-                                image.getRepoTags() != null
-                                        && Arrays.stream(image.getRepoTags())
-                                                .anyMatch(
-                                                        tag ->
-                                                                !tag.startsWith("flink:")
-                                                                        && !tag.startsWith(
-                                                                                "testcontainers")
-                                                                        && !tag.equals(
-                                                                                MYSQL
-                                                                                        .getDockerImageName())))
-                .forEach(
-                        image -> {
-                            try {
-                                dockerClient.removeImageCmd(image.getId()).exec();
-                            } catch (Exception e) {
-                                LOG.warn(
-                                        "Failed to remove image: {}",
-                                        String.join(",", image.getRepoTags()));
-                            }
-                        });
     }
 
     /** Allow overriding the default flink properties. */
