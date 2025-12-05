@@ -807,7 +807,7 @@ limitations under the License.
         <profile>
             <id>java-11-target</id>
             <activation>
-                <jdk>[11,)</jdk>
+                <jdk>[11,17)</jdk>
             </activation>
             <properties>
                 <java.version>11</java.version>
