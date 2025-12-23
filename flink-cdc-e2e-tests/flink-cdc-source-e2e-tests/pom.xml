@@ -212,7 +212,7 @@ limitations under the License.
                 <executions>
                     <execution>
                         <id>copy-jars</id>
-                        <phase>test</phase>
+                        <phase>package</phase>
                         <goals>
                             <goal>copy</goal>
                         </goals>
