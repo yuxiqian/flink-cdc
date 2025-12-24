@@ -15,9 +15,20 @@
 
 name: Flink CDC CI Nightly
 on:
-  schedule:
-    - cron: '43 0 * * *' # Run daily, but not at 00:00 UTC to avoid job failure due to network throttle
-  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - release-*
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+  pull_request:
+    branches:
+      - master
+      - release-*
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
@@ -25,7 +36,6 @@ concurrency:
 
 jobs:
   license_check:
-    if: github.repository == 'apache/flink-cdc'
     name: License Check
     runs-on: ubuntu-latest
     steps:
@@ -40,7 +50,7 @@ jobs:
       - name: Set JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: '17'
           distribution: 'temurin'
           cache: 'maven'
       - name: Compiling jar packages
@@ -48,28 +58,24 @@ jobs:
       - name: Run license check
         run: gem install rubyzip -v 2.3.0 && ./tools/ci/license_check.rb
   common:
-    if: github.repository == 'apache/flink-cdc'
     name: Common Unit Tests
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
-      java-versions: "[11]"
+      java-versions: "[17]"
       modules: "['core']"
   pipeline-ut:
-    if: github.repository == 'apache/flink-cdc'
     name: Pipeline Unit Tests
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
-      java-versions: "[11]"
+      java-versions: "[17]"
       modules: "['mysql-pipeline', 'postgres-pipeline', 'oceanbase-pipeline', 'doris', 'elasticsearch', 'iceberg', 'kafka', 'maxcompute', 'paimon', 'starrocks', 'fluss']"
   source-ut:
-    if: github.repository == 'apache/flink-cdc'
     name: Source Unit Tests
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
-      java-versions: "[11]"
+      java-versions: "[17]"
       modules: "['mysql-source', 'postgres-source', 'oracle', 'mongodb7', 'mongodb8', 'sqlserver', 'tidb', 'oceanbase-source', 'db2', 'vitess']"
   pipeline_e2e:
-    if: github.repository == 'apache/flink-cdc'
     strategy:
       fail-fast: false
       matrix:
@@ -77,15 +83,14 @@ jobs:
     name: Pipeline E2E Tests (${{ matrix.parallelism }}-Parallelism)
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
-      java-versions: "[11]"
+      java-versions: "[17]"
       flink-versions: "['1.19.3', '1.20.3']"
       modules: "['pipeline_e2e']"
       parallelism: ${{ matrix.parallelism }}
   source_e2e:
-    if: github.repository == 'apache/flink-cdc'
     name: Source E2E Tests
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
-      java-versions: "[11]"
+      java-versions: "[17]"
       flink-versions: "['1.19.3', '1.20.3']"
       modules: "['source_e2e']"
