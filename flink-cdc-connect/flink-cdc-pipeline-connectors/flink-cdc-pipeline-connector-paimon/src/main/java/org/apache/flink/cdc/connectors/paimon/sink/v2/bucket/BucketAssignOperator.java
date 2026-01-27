@@ -75,6 +75,7 @@ public class BucketAssignOperator extends AbstractStreamOperator<Event>
 
     private final Options catalogOptions;
 
+    // CATS!!!!
     private Catalog catalog;
 
     Map<TableId, Tuple4<BucketMode, RowKeyExtractor, BucketAssigner, RowPartitionKeyExtractor>>

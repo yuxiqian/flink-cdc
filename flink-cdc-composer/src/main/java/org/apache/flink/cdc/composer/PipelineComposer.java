@@ -24,7 +24,7 @@ public interface PipelineComposer {
 
     /**
      * Composing pipeline execution from the specified pipeline definition.
-     *
+     * ???
      * @param pipelineDef definition of the pipeline
      */
     PipelineExecution compose(PipelineDef pipelineDef);

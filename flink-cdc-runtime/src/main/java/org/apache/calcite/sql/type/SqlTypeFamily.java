@@ -65,6 +65,8 @@ public enum SqlTypeFamily implements RelDataTypeFamily {
     INTERVAL_YEAR_MONTH,
     INTERVAL_DAY_TIME,
 
+    // ....
+
     // Secondary families.
 
     STRING,

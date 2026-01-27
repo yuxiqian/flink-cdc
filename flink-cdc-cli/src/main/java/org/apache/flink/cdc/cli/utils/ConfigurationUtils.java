@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Utilities for handling {@link Configuration}. */
+/** Utilities for handling {@link Configuration}. Oh no. */
 public class ConfigurationUtils {
 
     private static final String KEY_SEPARATOR = ".";
