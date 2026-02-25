@@ -58,6 +58,9 @@ public class FlussMetaDataApplier implements MetadataApplier {
     private Set<SchemaChangeEventType> enabledEventTypes =
             new HashSet<>(Arrays.asList(CREATE_TABLE, DROP_TABLE));
 
+    private transient Connection connection;
+    private transient Admin admin;
+
     public FlussMetaDataApplier(
             Configuration flussClientConfig,
             Map<String, String> tableProperties,
@@ -89,12 +92,13 @@ public class FlussMetaDataApplier implements MetadataApplier {
     @Override
     public void applySchemaChange(SchemaChangeEvent schemaChangeEvent) {
         LOG.info("fluss metadata applier receive schemaChangeEvent {}", schemaChangeEvent);
+        Admin admin = getAdmin();
         if (schemaChangeEvent instanceof CreateTableEvent) {
             CreateTableEvent createTableEvent = (CreateTableEvent) schemaChangeEvent;
-            applyCreateTable(createTableEvent);
+            applyCreateTable(admin, createTableEvent);
         } else if (schemaChangeEvent instanceof DropTableEvent) {
             DropTableEvent dropTableEvent = (DropTableEvent) schemaChangeEvent;
-            applyDropTable(dropTableEvent);
+            applyDropTable(admin, dropTableEvent);
         } else {
             throw new IllegalArgumentException(
                     "fluss metadata applier only support CreateTableEvent now but receives "
@@ -102,9 +106,8 @@ public class FlussMetaDataApplier implements MetadataApplier {
         }
     }
 
-    private void applyCreateTable(CreateTableEvent event) {
-        try (Connection connection = ConnectionFactory.createConnection(flussClientConfig);
-                Admin admin = connection.getAdmin()) {
+    private void applyCreateTable(Admin admin, CreateTableEvent event) {
+        try {
             TableId tableId = event.tableId();
             TablePath tablePath = new TablePath(tableId.getSchemaName(), tableId.getTableName());
             String tableIdentifier = tablePath.getDatabaseName() + "." + tablePath.getTableName();
@@ -126,15 +129,32 @@ public class FlussMetaDataApplier implements MetadataApplier {
         }
     }
 
-    private void applyDropTable(DropTableEvent event) {
-        try (Connection connection = ConnectionFactory.createConnection(flussClientConfig);
-                Admin admin = connection.getAdmin()) {
+    private void applyDropTable(Admin admin, DropTableEvent event) {
+        try {
             TableId tableId = event.tableId();
             TablePath tablePath = new TablePath(tableId.getSchemaName(), tableId.getTableName());
             admin.dropTable(tablePath, true).get();
         } catch (Exception e) {
             LOG.error("Failed to apply schema change {}", event, e);
             throw new RuntimeException(e);
+        }
+    }
+
+    private Admin getAdmin() {
+        if (connection == null) {
+            connection = ConnectionFactory.createConnection(flussClientConfig);
+            admin = connection.getAdmin();
+        }
+        return admin;
+    }
+
+    @Override
+    public void close() throws Exception {
+        if (admin != null) {
+            admin.close();
+        }
+        if (connection != null) {
+            connection.close();
         }
     }
 
