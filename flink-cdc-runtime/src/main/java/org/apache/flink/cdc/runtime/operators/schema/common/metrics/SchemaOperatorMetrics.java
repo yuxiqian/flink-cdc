@@ -22,7 +22,6 @@ import org.apache.flink.cdc.runtime.operators.schema.regular.SchemaOperator;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /** A collection class for handling metrics in {@link SchemaOperator}. */
@@ -32,15 +31,12 @@ public class SchemaOperatorMetrics {
     public static final String SCHEMA_CHANGE_BEHAVIOR = "schemaChangeBehavior";
 
     public static final Map<SchemaChangeBehavior, Integer> SCHEMA_CHANGE_BEHAVIOR_INTEGER_MAP =
-            new HashMap<SchemaChangeBehavior, Integer>() {
-                {
-                    put(SchemaChangeBehavior.IGNORE, 0);
-                    put(SchemaChangeBehavior.LENIENT, 1);
-                    put(SchemaChangeBehavior.TRY_EVOLVE, 2);
-                    put(SchemaChangeBehavior.EVOLVE, 3);
-                    put(SchemaChangeBehavior.EXCEPTION, 4);
-                }
-            };
+            Map.of(
+                    SchemaChangeBehavior.IGNORE, 0,
+                    SchemaChangeBehavior.LENIENT, 1,
+                    SchemaChangeBehavior.TRY_EVOLVE, 2,
+                    SchemaChangeBehavior.EVOLVE, 3,
+                    SchemaChangeBehavior.EXCEPTION, 4);
 
     /** Total count of schema change events received. */
     public static final String NUM_SCHEMA_CHANGE_EVENTS = "numSchemaChangeEvents";
