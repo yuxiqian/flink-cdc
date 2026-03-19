@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.iceberg.sink.v2;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.cdc.common.data.binary.BinaryStringData;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
@@ -31,6 +30,7 @@ import org.apache.flink.cdc.common.types.RowType;
 import org.apache.flink.cdc.connectors.iceberg.sink.IcebergMetadataApplier;
 import org.apache.flink.cdc.connectors.iceberg.sink.v2.compaction.CompactionOptions;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
+import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.util.RestartStrategyUtils;
@@ -97,7 +97,7 @@ public class IcebergSinkITCase {
         events.addAll(generateEvents(tableId));
         events.addAll(generateEvents(TableId.tableId("test_db", "test_table_2")));
         events.addAll(generateEvents(tableId));
-        DataStream<Event> stream = env.fromData(events, TypeInformation.of(Event.class));
+        DataStream<Event> stream = env.fromData(events, new EventTypeInfo());
 
         Sink<Event> icebergSink =
                 new IcebergSink(

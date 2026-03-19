@@ -21,6 +21,7 @@ import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.cdc.common.event.Event;
+import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.connector.sink2.WithPreWriteTopology;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -43,7 +44,7 @@ class DataSinkTranslatorTest {
     void testPreWriteWithoutCommitSink() {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         ArrayList<Event> mockEvents = Lists.newArrayList(new EmptyEvent(), new EmptyEvent());
-        DataStreamSource<Event> inputStream = env.fromCollection(mockEvents);
+        DataStreamSource<Event> inputStream = env.fromData(mockEvents, new EventTypeInfo());
         DataSinkTranslator translator = new DataSinkTranslator();
 
         // Node hash must be a 32 character String that describes a hex code

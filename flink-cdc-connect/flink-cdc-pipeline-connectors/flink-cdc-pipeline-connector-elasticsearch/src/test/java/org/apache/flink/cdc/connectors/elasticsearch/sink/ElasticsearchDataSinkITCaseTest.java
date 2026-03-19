@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.elasticsearch.sink;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.TableId;
@@ -26,6 +25,7 @@ import org.apache.flink.cdc.connectors.elasticsearch.config.ElasticsearchSinkOpt
 import org.apache.flink.cdc.connectors.elasticsearch.sink.utils.ElasticsearchContainer;
 import org.apache.flink.cdc.connectors.elasticsearch.sink.utils.ElasticsearchTestUtils;
 import org.apache.flink.cdc.connectors.elasticsearch.v2.NetworkConfig;
+import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.util.RestartStrategyUtils;
@@ -194,7 +194,7 @@ class ElasticsearchDataSinkITCaseTest {
         ElasticsearchDataSink<Event> sink =
                 new ElasticsearchDataSink<>(options, ZoneId.systemDefault());
 
-        DataStream<Event> stream = env.fromCollection(events, TypeInformation.of(Event.class));
+        DataStream<Event> stream = env.fromData(events, new EventTypeInfo());
         Sink<Event> elasticsearchSink = ((FlinkSinkProvider) sink.getEventSinkProvider()).getSink();
         stream.sinkTo(elasticsearchSink);
 

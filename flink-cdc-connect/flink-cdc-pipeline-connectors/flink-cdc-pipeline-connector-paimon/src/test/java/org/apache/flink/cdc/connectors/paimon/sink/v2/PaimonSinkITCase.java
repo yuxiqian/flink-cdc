@@ -25,7 +25,6 @@ import org.apache.flink.api.common.TaskInfoImpl;
 import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.api.common.operators.ProcessingTimeService;
 import org.apache.flink.api.common.serialization.SerializationSchema;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.connector.sink2.Committer;
 import org.apache.flink.api.connector.sink2.CommitterInitContext;
@@ -67,6 +66,7 @@ import org.apache.flink.cdc.connectors.paimon.sink.PaimonMetadataApplier;
 import org.apache.flink.cdc.connectors.paimon.sink.v2.bucket.BucketAssignOperator;
 import org.apache.flink.cdc.runtime.operators.sink.SchemaEvolutionClient;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
+import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.groups.SinkCommitterMetricGroup;
 import org.apache.flink.metrics.groups.SinkWriterMetricGroup;
@@ -987,7 +987,7 @@ public class PaimonSinkITCase {
     }
 
     private void runJobWithEvents(List<Event> events, boolean isBatchMode) throws Exception {
-        DataStream<Event> stream = env.fromCollection(events, TypeInformation.of(Event.class));
+        DataStream<Event> stream = env.fromData(events, new EventTypeInfo());
 
         DataSinkFactory sinkFactory =
                 FactoryDiscoveryUtils.getFactoryByIdentifier("paimon", DataSinkFactory.class);

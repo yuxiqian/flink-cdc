@@ -249,8 +249,7 @@ class KafkaDataSinkITCase extends TestLogger {
         final StreamExecutionEnvironment env = new LocalStreamEnvironment();
         env.enableCheckpointing(1000L);
         RestartStrategyUtils.configureNoRestartStrategy(env);
-        final DataStream<Event> source =
-                env.fromCollection(createSourceEvents(), new EventTypeInfo());
+        final DataStream<Event> source = env.fromData(createSourceEvents(), new EventTypeInfo());
         Map<String, String> config = new HashMap<>();
         Properties properties = getKafkaClientConfiguration();
         properties.forEach(
@@ -307,8 +306,7 @@ class KafkaDataSinkITCase extends TestLogger {
         final StreamExecutionEnvironment env = new LocalStreamEnvironment();
         env.enableCheckpointing(1000L);
         RestartStrategyUtils.configureNoRestartStrategy(env);
-        final DataStream<Event> source =
-                env.fromCollection(createSourceEvents(), new EventTypeInfo());
+        final DataStream<Event> source = env.fromData(createSourceEvents(), new EventTypeInfo());
         Map<String, String> config = new HashMap<>();
         Properties properties = getKafkaClientConfiguration();
         properties.forEach(
@@ -378,8 +376,7 @@ class KafkaDataSinkITCase extends TestLogger {
         final StreamExecutionEnvironment env = new LocalStreamEnvironment();
         env.enableCheckpointing(1000L);
         RestartStrategyUtils.configureNoRestartStrategy(env);
-        final DataStream<Event> source =
-                env.fromCollection(createSourceEvents(), new EventTypeInfo());
+        final DataStream<Event> source = env.fromData(createSourceEvents(), new EventTypeInfo());
         Map<String, String> config = new HashMap<>();
         Properties properties = getKafkaClientConfiguration();
         properties.forEach(
@@ -475,8 +472,7 @@ class KafkaDataSinkITCase extends TestLogger {
         final StreamExecutionEnvironment env = new LocalStreamEnvironment();
         env.enableCheckpointing(1000L);
         RestartStrategyUtils.configureNoRestartStrategy(env);
-        final DataStream<Event> source =
-                env.fromCollection(createSourceEvents(), new EventTypeInfo());
+        final DataStream<Event> source = env.fromData(createSourceEvents(), new EventTypeInfo());
         Map<String, String> config = new HashMap<>();
         config.put(KafkaDataSinkOptions.TOPIC.key(), "test_topic");
         config.put(KafkaDataSinkOptions.SINK_ADD_TABLEID_TO_HEADER_ENABLED.key(), "true");

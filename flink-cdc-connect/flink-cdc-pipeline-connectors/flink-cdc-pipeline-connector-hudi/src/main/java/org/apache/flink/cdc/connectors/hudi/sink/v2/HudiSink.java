@@ -27,6 +27,7 @@ import org.apache.flink.cdc.connectors.hudi.sink.bucket.BucketAssignOperator;
 import org.apache.flink.cdc.connectors.hudi.sink.bucket.BucketWrapper;
 import org.apache.flink.cdc.connectors.hudi.sink.bucket.FlushEventAlignmentOperator;
 import org.apache.flink.cdc.connectors.hudi.sink.operator.MultiTableWriteOperator;
+import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.connector.sink2.WithPreWriteTopology;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -103,7 +104,7 @@ public class HudiSink implements Sink<Event>, WithPreWriteTopology<Event> {
         // Step 4: Unwrap and write to Hudi
         // Use map to unwrap BucketWrapper before passing to MultiTableWriteOperator
         DataStream<Event> unwrappedStream =
-                alignedStream.map(wrapper -> wrapper.getEvent(), TypeInformation.of(Event.class));
+                alignedStream.map(BucketWrapper::getEvent, new EventTypeInfo());
 
         return unwrappedStream
                 .transform(
@@ -116,7 +117,7 @@ public class HudiSink implements Sink<Event>, WithPreWriteTopology<Event> {
                             // Write side effects are handled by the operator, no events emitted
                             // downstream
                         })
-                .returns(TypeInformation.of(Event.class));
+                .returns(new EventTypeInfo());
     }
 
     /** Dummy sink writer that does nothing. */

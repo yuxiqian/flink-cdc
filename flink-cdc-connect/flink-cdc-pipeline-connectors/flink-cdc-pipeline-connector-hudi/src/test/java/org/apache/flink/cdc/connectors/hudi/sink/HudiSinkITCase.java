@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.hudi.sink;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.cdc.common.data.TimestampData;
 import org.apache.flink.cdc.common.data.binary.BinaryStringData;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
@@ -30,6 +29,7 @@ import org.apache.flink.cdc.common.types.DataTypes;
 import org.apache.flink.cdc.common.types.RowType;
 import org.apache.flink.cdc.connectors.hudi.sink.v2.HudiSink;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
+import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -137,7 +137,7 @@ public class HudiSinkITCase {
         events.addAll(generateEvents(TableId.tableId("test_db", "test_table_2"), partitioned));
         events.addAll(generateEvents(tableId, partitioned));
 
-        DataStream<Event> stream = env.fromData(events, TypeInformation.of(Event.class));
+        DataStream<Event> stream = env.fromData(events, new EventTypeInfo());
         HudiSink hoodieSink = new HudiSink(conf, "", ZoneId.systemDefault());
         stream.sinkTo(hoodieSink).uid("hudi_sink").name("hudi_sink");
         env.execute("Values to Hudi Sink");

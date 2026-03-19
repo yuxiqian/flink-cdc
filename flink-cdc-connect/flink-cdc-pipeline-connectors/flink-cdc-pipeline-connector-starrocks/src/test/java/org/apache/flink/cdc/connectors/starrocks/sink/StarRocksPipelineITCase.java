@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.starrocks.sink;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.cdc.common.configuration.Configuration;
 import org.apache.flink.cdc.common.data.LocalZonedTimestampData;
@@ -34,6 +33,7 @@ import org.apache.flink.cdc.common.types.RowType;
 import org.apache.flink.cdc.connectors.starrocks.sink.utils.StarRocksContainer;
 import org.apache.flink.cdc.connectors.starrocks.sink.utils.StarRocksSinkTestBase;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
+import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.util.RestartStrategyUtils;
@@ -193,8 +193,7 @@ class StarRocksPipelineITCase extends StarRocksSinkTestBase {
                 TableId.tableId(
                         StarRocksContainer.STARROCKS_DATABASE_NAME,
                         StarRocksContainer.STARROCKS_TABLE_NAME);
-        DataStream<Event> stream =
-                env.fromCollection(generateEvents(tableId), TypeInformation.of(Event.class));
+        DataStream<Event> stream = env.fromData(generateEvents(tableId), new EventTypeInfo());
 
         Configuration config =
                 new Configuration()
