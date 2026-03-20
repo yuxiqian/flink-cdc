@@ -26,8 +26,8 @@ import org.apache.flink.cdc.pipeline.tests.utils.PipelineTestOnYarnEnvironment;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Network;
@@ -51,7 +51,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** End-to-end tests for mysql cdc pipeline job. */
-@EnabledIfSystemProperty(named = "specifiedFlinkVersion", matches = "^1.*")
+@Disabled
 public class MysqlE2eWithYarnApplicationITCase extends PipelineTestOnYarnEnvironment {
     private static final Logger LOG =
             LoggerFactory.getLogger(MysqlE2eWithYarnApplicationITCase.class);

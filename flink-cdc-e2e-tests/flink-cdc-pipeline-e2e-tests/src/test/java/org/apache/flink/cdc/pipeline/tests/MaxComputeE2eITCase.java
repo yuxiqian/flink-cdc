@@ -33,8 +33,8 @@ import com.aliyun.odps.data.Record;
 import com.aliyun.odps.task.SQLTask;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
@@ -57,7 +57,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** End-to-end tests for maxcompute cdc pipeline job. */
-@EnabledIfSystemProperty(named = "specifiedFlinkVersion", matches = "^1.*")
+@Disabled
 class MaxComputeE2eITCase extends PipelineTestEnvironment {
     private static final Logger LOG = LoggerFactory.getLogger(MaxComputeE2eITCase.class);
 

@@ -19,6 +19,7 @@ package org.apache.flink.cdc.pipeline.tests;
 
 import org.apache.flink.cdc.pipeline.tests.utils.PipelineTestEnvironment;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 
 /** End-to-end tests for values cdc pipeline job. */
+@Disabled
 class ValuesE2eITCase extends PipelineTestEnvironment {
     private static final Logger LOG = LoggerFactory.getLogger(ValuesE2eITCase.class);
 

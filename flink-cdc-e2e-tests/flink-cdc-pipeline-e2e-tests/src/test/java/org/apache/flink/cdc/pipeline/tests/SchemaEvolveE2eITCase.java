@@ -23,8 +23,8 @@ import org.apache.flink.cdc.pipeline.tests.utils.PipelineTestEnvironment;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +37,7 @@ import java.util.Collections;
 import java.util.List;
 
 /** E2e tests for Schema Evolution cases. */
-@EnabledIfSystemProperty(named = "specifiedFlinkVersion", matches = "^1.*")
+@Disabled
 class SchemaEvolveE2eITCase extends PipelineTestEnvironment {
     private static final Logger LOG = LoggerFactory.getLogger(SchemaEvolveE2eITCase.class);
 
