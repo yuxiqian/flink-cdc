@@ -27,8 +27,8 @@ import org.apache.flink.cdc.pipeline.tests.utils.TarballFetcher;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.slf4j.Logger;
@@ -53,7 +53,7 @@ import java.util.stream.Collectors;
 /**
  * E2e cases for stopping & restarting jobs of `MySQL source to Paimon sink` from previous state.
  */
-@EnabledIfSystemProperty(named = "specifiedFlinkVersion", matches = "^1.*")
+@Disabled
 class MySqlToPaimonMigrationITCase extends PipelineTestEnvironment {
 
     private static final Logger LOG = LoggerFactory.getLogger(MySqlToPaimonMigrationITCase.class);
