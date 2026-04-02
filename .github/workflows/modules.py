@@ -31,6 +31,7 @@ MODULES_PIPELINE_CONNECTORS = [
     "flink-cdc-connect/flink-cdc-pipeline-connectors/flink-cdc-pipeline-connector-paimon",
     "flink-cdc-connect/flink-cdc-pipeline-connectors/flink-cdc-pipeline-connector-starrocks",
     "flink-cdc-connect/flink-cdc-pipeline-connectors/flink-cdc-pipeline-connector-fluss",
+    "flink-cdc-connect/flink-cdc-pipeline-connectors/flink-cdc-pipeline-connector-hls",
     "flink-cdc-connect/flink-cdc-pipeline-connectors/flink-cdc-pipeline-connector-hudi",
     "flink-cdc-connect/flink-cdc-pipeline-connectors/flink-cdc-pipeline-connector-values"
 ]
@@ -132,6 +133,10 @@ MODULES_HUDI = [
     "flink-cdc-connect/flink-cdc-pipeline-connectors/flink-cdc-pipeline-connector-hudi"
 ]
 
+MODULES_HLS = [
+    "flink-cdc-connect/flink-cdc-pipeline-connectors/flink-cdc-pipeline-connector-hls"
+]
+
 MODULES_PIPELINE_E2E = [
     "flink-cdc-e2e-tests/flink-cdc-pipeline-e2e-tests"
 ]
@@ -164,6 +169,7 @@ ALL_MODULES = set(
     MODULES_ELASTICSEARCH +
     MODULES_MAXCOMPUTE +
     MODULES_FLUSS +
+    MODULES_HLS +
     MODULES_HUDI +
     MODULES_PIPELINE_E2E +
     MODULES_SOURCE_E2E
