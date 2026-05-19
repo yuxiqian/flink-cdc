@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.hls.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.common.data.RecordData;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
@@ -26,6 +25,7 @@ import org.apache.flink.cdc.common.source.FlinkSourceProvider;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.util.RestartStrategyUtils;
 import org.apache.flink.test.junit5.MiniClusterExtension;
 import org.apache.flink.util.CloseableIterator;
 
@@ -80,7 +80,7 @@ class HlsExampleITCase {
         StreamExecutionEnvironment env =
                 StreamExecutionEnvironment.getExecutionEnvironment(flinkConfig);
         env.setParallelism(MAX_PARALLELISM);
-        env.setRestartStrategy(RestartStrategies.noRestart());
+        RestartStrategyUtils.configureNoRestartStrategy(env);
 
         CloseableIterator<Event> iterator =
                 env.fromSource(
