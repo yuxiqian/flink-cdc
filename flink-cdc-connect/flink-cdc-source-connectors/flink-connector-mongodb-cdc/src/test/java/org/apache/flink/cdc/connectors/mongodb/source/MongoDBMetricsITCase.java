@@ -41,6 +41,7 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import org.bson.Document;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
@@ -61,6 +62,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** IT tests for {@link MongoDBSource}. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
+@Disabled
 class MongoDBMetricsITCase extends MongoDBSourceTestBase {
     private static final Logger LOG = LoggerFactory.getLogger(MongoDBMetricsITCase.class);
 

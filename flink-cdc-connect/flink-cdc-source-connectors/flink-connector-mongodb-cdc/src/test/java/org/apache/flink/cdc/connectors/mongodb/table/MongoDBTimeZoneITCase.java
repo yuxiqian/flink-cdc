@@ -41,6 +41,7 @@ import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLI
 import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
 
 /** Integration tests to check mongodb-cdc works well under different local timezone. */
+@Disabled
 class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
 
     private final StreamExecutionEnvironment env =

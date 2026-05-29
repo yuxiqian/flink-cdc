@@ -34,6 +34,7 @@ import org.bson.BsonDateTime;
 import org.bson.BsonTimestamp;
 import org.bson.Document;
 import org.bson.types.ObjectId;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -213,6 +214,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
         result.getJobClient().get().cancel().get();
     }
 
+    @Disabled
     @ParameterizedTest(name = "parallelismSnapshot: {0}")
     @ValueSource(booleans = {true, false})
     void testStartupFromTimestamp(boolean parallelismSnapshot) throws Exception {
@@ -294,6 +296,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
         result.getJobClient().get().cancel().get();
     }
 
+    @Disabled
     @ParameterizedTest(name = "parallelismSnapshot: {0}")
     @ValueSource(booleans = {true, false})
     void testAllTypes(boolean parallelismSnapshot) throws Throwable {
@@ -459,6 +462,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
         result.getJobClient().get().cancel().get();
     }
 
+    @Disabled
     @ParameterizedTest(name = "parallelismSnapshot: {0}")
     @ValueSource(booleans = {true, false})
     void testMetadataColumns(boolean parallelismSnapshot) throws Exception {

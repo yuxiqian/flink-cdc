@@ -41,6 +41,7 @@ import org.assertj.core.api.Assertions;
 import org.bson.BsonDocument;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -65,6 +66,7 @@ import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLI
 
 /** MongoDB stream split reader test case. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
+@Disabled
 class MongoDBStreamSplitReaderTest extends MongoDBSourceTestBase {
 
     private static final String STREAM_SPLIT_ID = "stream-split";

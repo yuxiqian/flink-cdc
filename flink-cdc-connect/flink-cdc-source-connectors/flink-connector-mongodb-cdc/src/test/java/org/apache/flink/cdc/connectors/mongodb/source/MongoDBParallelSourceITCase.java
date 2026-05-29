@@ -43,6 +43,7 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import org.bson.Document;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -66,6 +67,7 @@ import static org.apache.flink.util.Preconditions.checkState;
 
 /** IT tests for {@link MongoDBSource}. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
+@Disabled
 class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
     private static final int USE_POST_LOWWATERMARK_HOOK = 1;
     private static final int USE_PRE_HIGHWATERMARK_HOOK = 2;

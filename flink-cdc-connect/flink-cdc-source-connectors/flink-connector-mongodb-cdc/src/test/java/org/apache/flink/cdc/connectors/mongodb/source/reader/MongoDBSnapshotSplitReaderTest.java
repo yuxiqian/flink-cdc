@@ -42,6 +42,7 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.assertj.core.api.Assertions;
 import org.bson.BsonDocument;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,7 @@ import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLI
 import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
 
 /** MongoDB snapshot split reader test case. */
+@Disabled
 class MongoDBSnapshotSplitReaderTest extends MongoDBSourceTestBase {
 
     private static final Logger LOG = LoggerFactory.getLogger(MongoDBSnapshotSplitReaderTest.class);

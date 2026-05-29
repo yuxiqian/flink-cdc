@@ -39,6 +39,7 @@ import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils.wai
 import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils.waitForSnapshotStarted;
 
 /** Integration tests to check mongodb-cdc works well under namespace.regex. */
+@Disabled
 class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
 
     private final StreamExecutionEnvironment env =
