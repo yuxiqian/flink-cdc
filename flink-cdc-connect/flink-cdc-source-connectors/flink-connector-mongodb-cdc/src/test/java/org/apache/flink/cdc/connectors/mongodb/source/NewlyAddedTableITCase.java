@@ -38,7 +38,6 @@ import com.mongodb.client.model.Updates;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
@@ -67,7 +66,6 @@ import static org.apache.flink.util.Preconditions.checkState;
 /** IT tests to cover various newly added collections during capture process. */
 @Timeout(value = 500, unit = TimeUnit.SECONDS)
 @DisabledIfSystemProperty(named = "flink.profile", matches = "flink2")
-@Disabled
 class NewlyAddedTableITCase extends MongoDBSourceTestBase {
 
     private String customerDatabase;

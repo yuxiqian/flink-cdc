@@ -46,7 +46,6 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.assertj.core.api.Assertions;
 import org.bson.Document;
 import org.bson.types.ObjectId;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -71,7 +70,6 @@ import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBAssertUtils.a
 import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBAssertUtils.assertUpdate;
 
 /** Tests for {@link MongoDBSource} which also heavily tests {@link DebeziumSourceFunction}. */
-@Disabled
 class LegacyMongoDBSourceTest extends LegacyMongoDBTestBase {
 
     @Test

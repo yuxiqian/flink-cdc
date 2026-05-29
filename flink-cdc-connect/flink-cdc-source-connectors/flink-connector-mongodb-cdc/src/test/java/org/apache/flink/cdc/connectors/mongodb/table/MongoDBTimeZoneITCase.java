@@ -27,7 +27,6 @@ import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 
 import org.assertj.core.api.Assertions;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -42,7 +41,6 @@ import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLI
 import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
 
 /** Integration tests to check mongodb-cdc works well under different local timezone. */
-@Disabled
 class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
 
     private final StreamExecutionEnvironment env =

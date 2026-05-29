@@ -44,7 +44,6 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import org.assertj.core.api.Assertions;
 import org.bson.Document;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -72,7 +71,6 @@ import static org.apache.flink.util.Preconditions.checkState;
 
 /** Integration tests for MongoDB full document before change info. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
-@Disabled
 class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
 
     private static final int USE_POST_LOWWATERMARK_HOOK = 1;
