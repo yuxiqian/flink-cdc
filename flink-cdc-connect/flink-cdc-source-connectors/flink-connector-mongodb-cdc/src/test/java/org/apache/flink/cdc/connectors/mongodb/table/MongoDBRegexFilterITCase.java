@@ -27,6 +27,7 @@ import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import com.mongodb.client.MongoDatabase;
 import org.assertj.core.api.Assertions;
 import org.bson.Document;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
