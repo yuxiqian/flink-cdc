@@ -37,10 +37,10 @@ import io.debezium.connector.postgresql.PostgresTaskContext;
 import io.debezium.connector.postgresql.connection.Lsn;
 import io.debezium.connector.postgresql.connection.PostgresConnection;
 import io.debezium.connector.postgresql.connection.ReplicationConnection;
-import io.debezium.connector.postgresql.spi.Snapshotter;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.source.spi.ChangeEventSource;
 import io.debezium.relational.TableId;
+import io.debezium.snapshot.SnapshotterService;
 import io.debezium.util.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,7 +85,7 @@ public class PostgresStreamFetchTask implements FetchTask<SourceSplitBase> {
         streamSplitReadTask =
                 new StreamSplitReadTask(
                         sourceFetchContext.getDbzConnectorConfig(),
-                        sourceFetchContext.getSnapShotter(),
+                        sourceFetchContext.getSnapshotterService(),
                         sourceFetchContext.getConnection(),
                         sourceFetchContext.getEventDispatcher(),
                         sourceFetchContext.getWaterMarkDispatcher(),
@@ -159,7 +159,10 @@ public class PostgresStreamFetchTask implements FetchTask<SourceSplitBase> {
                         "Committing offset {} for {}",
                         Lsn.valueOf(lastCommitLsn),
                         streamSplitReadTask.streamSplit);
-                streamSplitReadTask.commitOffset(offsets);
+                // Debezium 2.7.4 commitOffset(partition, offset): the partition argument is unused
+                // by the Postgres implementation but required by the signature.
+                streamSplitReadTask.commitOffset(
+                        streamSplitReadTask.sourcePartition.getSourcePartition(), offsets);
             }
         }
     }
@@ -178,10 +181,11 @@ public class PostgresStreamFetchTask implements FetchTask<SourceSplitBase> {
 
         public ChangeEventSourceContext context;
         public PostgresOffsetContext offsetContext;
+        public PostgresPartition sourcePartition;
 
         public StreamSplitReadTask(
                 PostgresConnectorConfig connectorConfig,
-                Snapshotter snapshotter,
+                SnapshotterService snapshotterService,
                 PostgresConnection connection,
                 PostgresEventDispatcher<TableId> eventDispatcher,
                 WatermarkDispatcher watermarkDispatcher,
@@ -194,7 +198,7 @@ public class PostgresStreamFetchTask implements FetchTask<SourceSplitBase> {
 
             super(
                     connectorConfig,
-                    snapshotter,
+                    snapshotterService,
                     connection,
                     eventDispatcher,
                     errorHandler,
@@ -215,11 +219,17 @@ public class PostgresStreamFetchTask implements FetchTask<SourceSplitBase> {
                 throws InterruptedException {
             this.context = context;
             this.offsetContext = offsetContext;
+            this.sourcePartition = partition;
 
             LOG.info("Execute StreamSplitReadTask for split: {}", streamSplit);
 
             offsetContext.setStreamingStoppingLsn(
                     ((PostgresOffset) streamSplit.getEndingOffset()).getLsn());
+            // Debezium 2.7.4 separates init() (which seeds the effectiveOffset used throughout
+            // execute()) from execute(). The Debezium coordinator normally calls init() first;
+            // since
+            // we drive the streaming source directly we must call it ourselves to avoid a NPE.
+            init(offsetContext);
             super.execute(context, partition, offsetContext);
             if (isBoundedRead()) {
                 LOG.debug("StreamSplit is bounded read: {}", streamSplit);

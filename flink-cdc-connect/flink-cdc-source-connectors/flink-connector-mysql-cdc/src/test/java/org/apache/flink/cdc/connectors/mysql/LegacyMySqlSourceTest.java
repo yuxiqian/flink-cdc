@@ -839,7 +839,9 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                                     "test",
                                     "test",
                                     "CREATE TABLE test(a int)",
-                                    null)
+                                    null,
+                                    // Debezium 2.7 added a trailing timestamp to HistoryRecord.
+                                    java.time.Instant.ofEpochMilli(0))
                             .document();
             historyState.add(writer.write(document));
         }
@@ -1360,6 +1362,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
         @Override
         public Column columnWithName(String name) {
             throw new UnsupportedOperationException("Not implemented.");
+        }
+
+        @Override
+        public io.debezium.relational.Attribute attributeWithName(String name) {
+            return null;
+        }
+
+        @Override
+        public List<io.debezium.relational.Attribute> attributes() {
+            return Collections.emptyList();
         }
 
         @Override

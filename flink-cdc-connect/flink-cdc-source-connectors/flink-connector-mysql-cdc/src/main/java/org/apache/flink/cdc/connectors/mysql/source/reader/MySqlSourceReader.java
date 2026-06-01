@@ -48,8 +48,8 @@ import org.apache.flink.connector.base.source.reader.fetcher.SingleThreadFetcher
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 
-import io.debezium.connector.mysql.MySqlConnection;
 import io.debezium.connector.mysql.MySqlPartition;
+import io.debezium.connector.mysql.jdbc.MySqlConnection;
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges;
 import org.slf4j.Logger;
@@ -100,7 +100,12 @@ public class MySqlSourceReader<T>
         this.mySqlSourceReaderContext = context;
         this.suspendedBinlogSplit = null;
         this.partition =
-                new MySqlPartition(sourceConfig.getMySqlConnectorConfig().getLogicalName());
+                new MySqlPartition(
+                        sourceConfig.getMySqlConnectorConfig().getLogicalName(),
+                        // databaseName is not part of the partition identity for binlog connectors
+                        // (only the server name is); MySQL captures multiple databases so there is
+                        // no single database name.
+                        null);
     }
 
     @Override

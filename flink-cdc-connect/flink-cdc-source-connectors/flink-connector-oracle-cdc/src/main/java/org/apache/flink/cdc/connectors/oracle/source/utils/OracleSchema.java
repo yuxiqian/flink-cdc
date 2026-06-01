@@ -63,8 +63,16 @@ public class OracleSchema {
         tables.overwriteTable(tables.editOrCreateTable(tableId).create());
 
         try {
-            oracleConnection.readSchemaForCapturedTables(
-                    tables, tableId.catalog(), tableId.schema(), null, false, tableIdSet);
+            // Debezium 2.x removed OracleConnection#readSchemaForCapturedTables; use the standard
+            // JdbcConnection#readSchema and limit it to the requested table via a TableFilter
+            // (equivalent to the previous captured-tables set).
+            oracleConnection.readSchema(
+                    tables,
+                    tableId.catalog(),
+                    tableId.schema(),
+                    Tables.TableFilter.fromPredicate(tableIdSet::contains),
+                    null,
+                    false);
             Table table = tables.forTable(tableId);
             TableChange tableChange = new TableChange(TableChanges.TableChangeType.CREATE, table);
             tableChangeMap.put(tableId, tableChange);

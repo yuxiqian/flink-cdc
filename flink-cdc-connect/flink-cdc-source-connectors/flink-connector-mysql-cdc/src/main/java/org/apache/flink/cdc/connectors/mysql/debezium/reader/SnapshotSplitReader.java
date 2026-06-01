@@ -44,7 +44,7 @@ import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.source.spi.ChangeEventSource;
 import io.debezium.pipeline.spi.SnapshotResult;
-import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.schema.SchemaNameAdjuster;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
@@ -149,7 +149,8 @@ public class SnapshotSplitReader implements DebeziumReader<SourceRecords, MySqlS
                         StatefulTaskContext.getClock(),
                         currentSnapshotSplit,
                         hooks,
-                        statefulTaskContext.getSourceConfig().isSkipSnapshotBackfill());
+                        statefulTaskContext.getSourceConfig().isSkipSnapshotBackfill(),
+                        statefulTaskContext.getNotificationService());
         executorService.execute(
                 () -> {
                     try {
@@ -254,7 +255,8 @@ public class SnapshotSplitReader implements DebeziumReader<SourceRecords, MySqlS
                 (MySqlStreamingChangeEventSourceMetrics)
                         statefulTaskContext.getStreamingChangeEventSourceMetrics(),
                 backfillBinlogSplit,
-                event -> true);
+                event -> true,
+                statefulTaskContext.getSnapshotterService());
     }
 
     private void dispatchBinlogEndEvent(MySqlBinlogSplit backFillBinlogSplit)
@@ -262,7 +264,7 @@ public class SnapshotSplitReader implements DebeziumReader<SourceRecords, MySqlS
         final SignalEventDispatcher signalEventDispatcher =
                 new SignalEventDispatcher(
                         statefulTaskContext.getOffsetContext().getOffset(),
-                        statefulTaskContext.getTopicSelector().getPrimaryTopic(),
+                        statefulTaskContext.getTopicSelector().schemaChangeTopic(),
                         statefulTaskContext.getDispatcher().getQueue());
         signalEventDispatcher.dispatchWatermarkEvent(
                 backFillBinlogSplit,
@@ -476,6 +478,34 @@ public class SnapshotSplitReader implements DebeziumReader<SourceRecords, MySqlS
         @Override
         public boolean isRunning() {
             return lowWatermark != null && highWatermark != null;
+        }
+
+        // The pause/resume streaming feature (added to the Debezium 2.x ChangeEventSourceContext
+        // SPI) is not used by flink-cdc, so the methods below are no-ops.
+
+        @Override
+        public boolean isPaused() {
+            return false;
+        }
+
+        @Override
+        public void resumeStreaming() throws InterruptedException {
+            // no-op
+        }
+
+        @Override
+        public void waitSnapshotCompletion() throws InterruptedException {
+            // no-op
+        }
+
+        @Override
+        public void streamingPaused() {
+            // no-op
+        }
+
+        @Override
+        public void waitStreamingPaused() throws InterruptedException {
+            // no-op
         }
     }
 }

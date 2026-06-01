@@ -129,7 +129,7 @@ public class SqlServerSource {
             props.setProperty("database.user", checkNotNull(username));
             props.setProperty("database.password", checkNotNull(password));
             props.setProperty("database.port", String.valueOf(port));
-            props.setProperty("database.history.skip.unparseable.ddl", String.valueOf(true));
+            props.setProperty("schema.history.internal.skip.unparseable.ddl", String.valueOf(true));
             props.setProperty("database.dbname", checkNotNull(database));
 
             if (tableList != null) {

@@ -179,7 +179,10 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
         this.chunkSplitter =
                 createChunkSplitter(sourceConfig, isTableIdCaseSensitive, chunkSplitterState);
         this.partition =
-                new MySqlPartition(sourceConfig.getMySqlConnectorConfig().getLogicalName());
+                new MySqlPartition(
+                        sourceConfig.getMySqlConnectorConfig().getLogicalName(),
+                        // databaseName is not part of the partition identity for binlog connectors.
+                        null);
         this.enumeratorContext = enumeratorContext;
     }
 

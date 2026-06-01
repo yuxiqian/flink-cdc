@@ -40,4 +40,33 @@ public class StoppableChangeEventSourceContext
     public boolean isRunning() {
         return isRunning;
     }
+
+    // The pause/resume streaming feature (added to the Debezium 2.x ChangeEventSourceContext SPI)
+    // is
+    // not used by flink-cdc, so the methods below are no-ops.
+
+    @Override
+    public boolean isPaused() {
+        return false;
+    }
+
+    @Override
+    public void resumeStreaming() throws InterruptedException {
+        // no-op
+    }
+
+    @Override
+    public void waitSnapshotCompletion() throws InterruptedException {
+        // no-op
+    }
+
+    @Override
+    public void streamingPaused() {
+        // no-op
+    }
+
+    @Override
+    public void waitStreamingPaused() throws InterruptedException {
+        // no-op
+    }
 }

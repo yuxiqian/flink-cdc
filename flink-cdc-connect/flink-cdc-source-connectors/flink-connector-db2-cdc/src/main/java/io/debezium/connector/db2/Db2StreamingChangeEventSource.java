@@ -11,8 +11,8 @@ import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.spi.ChangeTableResultSet;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DatabaseSchema;
 import io.debezium.schema.SchemaChangeEvent.SchemaChangeEventType;
+import io.debezium.snapshot.SnapshotterService;
 import io.debezium.util.Clock;
 import io.debezium.util.Metronome;
 import org.slf4j.Logger;
@@ -35,7 +35,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Copied from Debezium project(1.9.8.final)
+ * Copied from Debezium project (2.7.4.Final).
  *
  * <p>A {@link StreamingChangeEventSource} based on DB2 change data capture functionality. A main
  * loop polls database DDL change and change data tables and turns them into change events.
@@ -54,6 +54,10 @@ import java.util.stream.Collectors;
  * which table is the new one depending on LSNs stored in them. The loop streams changes from the
  * older table till there are events in new table with the LSN larger than in the old one. Then the
  * change table is switched and streaming is executed from the new one.
+ *
+ * <p>Flink-cdc change versus upstream Debezium 2.7.4.Final: adds the {@link #afterHandleLsn(
+ * Db2Partition, Lsn)} hook (invoked after each processed batch in {@link #execute}) so the
+ * incremental source can stop streaming once a bounded redo-log range has been consumed.
  *
  * @author Jiri Pechanec, Peter Urbanetz
  */
@@ -86,6 +90,8 @@ public class Db2StreamingChangeEventSource
     private final Db2DatabaseSchema schema;
     private final Duration pollInterval;
     private final Db2ConnectorConfig connectorConfig;
+    private Db2OffsetContext effectiveOffsetContext;
+    private final SnapshotterService snapshotterService;
 
     public Db2StreamingChangeEventSource(
             Db2ConnectorConfig connectorConfig,
@@ -94,7 +100,8 @@ public class Db2StreamingChangeEventSource
             EventDispatcher<Db2Partition, TableId> dispatcher,
             ErrorHandler errorHandler,
             Clock clock,
-            Db2DatabaseSchema schema) {
+            Db2DatabaseSchema schema,
+            SnapshotterService snapshotterService) {
         this.connectorConfig = connectorConfig;
         this.dataConnection = dataConnection;
         this.metadataConnection = metadataConnection;
@@ -103,6 +110,15 @@ public class Db2StreamingChangeEventSource
         this.clock = clock;
         this.schema = schema;
         this.pollInterval = connectorConfig.getPollInterval();
+        this.snapshotterService = snapshotterService;
+    }
+
+    @Override
+    public void init(Db2OffsetContext offsetContext) {
+        this.effectiveOffsetContext =
+                offsetContext != null
+                        ? offsetContext
+                        : new Db2OffsetContext(connectorConfig, TxLogPosition.NULL, false, false);
     }
 
     @Override
@@ -111,11 +127,6 @@ public class Db2StreamingChangeEventSource
             Db2Partition partition,
             Db2OffsetContext offsetContext)
             throws InterruptedException {
-        if (!connectorConfig.getSnapshotMode().shouldStream()) {
-            LOGGER.info("Streaming is not enabled in current configuration");
-            return;
-        }
-
         final Metronome metronome = Metronome.sleeper(pollInterval, clock);
         final Queue<Db2ChangeTable> schemaChangeCheckpoints =
                 new PriorityQueue<>((x, y) -> x.getStopLsn().compareTo(y.getStopLsn()));
@@ -169,13 +180,14 @@ public class Db2StreamingChangeEventSource
                     final Db2ChangeTable[] tables = getCdcTablesToQuery(partition, offsetContext);
                     tablesSlot.set(tables);
                     for (Db2ChangeTable table : tables) {
-                        if (table.getStartLsn().isBetween(fromLsn, currentMaxLsn)) {
+                        if (table.getStartLsn().isBetween(fromLsn, currentMaxLsn.increment())) {
                             LOGGER.info("Schema will be changed for {}", table);
                             schemaChangeCheckpoints.add(table);
                         }
                     }
                 }
                 try {
+                    final TxLogPosition toLogPosition = lastProcessedPositionOnStart;
                     dataConnection.getChangesForTables(
                             tablesSlot.get(),
                             fromLsn,
@@ -225,12 +237,12 @@ public class Db2StreamingChangeEventSource
                                     // committed offset
                                     if (tableWithSmallestLsn
                                                     .getChangePosition()
-                                                    .compareTo(lastProcessedPositionOnStart)
+                                                    .compareTo(toLogPosition)
                                             < 0) {
                                         LOGGER.info(
                                                 "Skipping change {} as its position is smaller than the last recorded position {}",
                                                 tableWithSmallestLsn,
-                                                lastProcessedPositionOnStart);
+                                                toLogPosition);
                                         tableWithSmallestLsn.next();
                                         continue;
                                     }
@@ -238,7 +250,7 @@ public class Db2StreamingChangeEventSource
                                     // operations in it before the last committed offset
                                     if (tableWithSmallestLsn
                                                             .getChangePosition()
-                                                            .compareTo(lastProcessedPositionOnStart)
+                                                            .compareTo(toLogPosition)
                                                     == 0
                                             && eventSerialNoInInitialTx
                                                     <= lastProcessedEventSerialNoOnStart) {
@@ -246,7 +258,7 @@ public class Db2StreamingChangeEventSource
                                                 "Skipping change {} as its order in the transaction {} is smaller than or equal to the last recorded operation {}[{}]",
                                                 tableWithSmallestLsn,
                                                 eventSerialNoInInitialTx,
-                                                lastProcessedPositionOnStart,
+                                                toLogPosition,
                                                 lastProcessedEventSerialNoOnStart);
                                         eventSerialNoInInitialTx++;
                                         tableWithSmallestLsn.next();
@@ -338,22 +350,35 @@ public class Db2StreamingChangeEventSource
                                                     operation,
                                                     data,
                                                     dataNext,
-                                                    clock));
+                                                    clock,
+                                                    connectorConfig));
                                     tableWithSmallestLsn.next();
                                 }
                             });
                     lastProcessedPosition = TxLogPosition.valueOf(currentMaxLsn);
                     // Terminate the transaction otherwise CDC could not be disabled for tables
                     dataConnection.rollback();
-                    // Determine whether to continue streaming in db2 cdc snapshot phase
+                    // FLINK-CDC: determine whether to continue streaming in db2 cdc snapshot phase
                     afterHandleLsn(partition, currentMaxLsn);
                 } catch (SQLException e) {
                     tablesSlot.set(processErrorFromChangeTableQuery(e, tablesSlot.get()));
+                }
+
+                if (context.isPaused()) {
+                    LOGGER.info("Streaming will now pause");
+                    context.streamingPaused();
+                    context.waitSnapshotCompletion();
+                    LOGGER.info("Streaming resumed");
                 }
             }
         } catch (Exception e) {
             errorHandler.setProducerThrowable(e);
         }
+    }
+
+    @Override
+    public Db2OffsetContext getOffsetContext() {
+        return effectiveOffsetContext;
     }
 
     private void migrateTable(
@@ -363,15 +388,21 @@ public class Db2StreamingChangeEventSource
             throws InterruptedException, SQLException {
         final Db2ChangeTable newTable = schemaChangeCheckpoints.poll();
         LOGGER.info("Migrating schema to {}", newTable);
+        io.debezium.relational.Table tableSchema =
+                metadataConnection.getTableSchemaFromTable(newTable);
+        offsetContext.event(newTable.getSourceTableId(), Instant.now());
         dispatcher.dispatchSchemaChangeEvent(
                 partition,
+                offsetContext,
                 newTable.getSourceTableId(),
                 new Db2SchemaChangeEventEmitter(
                         partition,
                         offsetContext,
                         newTable,
-                        metadataConnection.getTableSchemaFromTable(newTable),
+                        tableSchema,
+                        schema,
                         SchemaChangeEventType.ALTER));
+        newTable.setSourceTable(tableSchema);
     }
 
     private Db2ChangeTable[] processErrorFromChangeTableQuery(
@@ -417,7 +448,8 @@ public class Db2StreamingChangeEventSource
                         .collect(Collectors.groupingBy(x -> x.getSourceTableId()));
 
         if (includedAndCdcEnabledTables.isEmpty()) {
-            LOGGER.warn(DatabaseSchema.NO_CAPTURED_DATA_COLLECTIONS_WARNING);
+            LOGGER.warn(
+                    "After applying the include/exclude list filters, no changes will be captured. Please check your configuration!");
         }
 
         final List<Db2ChangeTable> tables = new ArrayList<>();
@@ -450,12 +482,14 @@ public class Db2StreamingChangeEventSource
                 // obtained from change table
                 dispatcher.dispatchSchemaChangeEvent(
                         partition,
+                        offsetContext,
                         currentTable.getSourceTableId(),
                         new Db2SchemaChangeEventEmitter(
                                 partition,
                                 offsetContext,
                                 currentTable,
                                 dataConnection.getTableSchemaFromTable(currentTable),
+                                schema,
                                 SchemaChangeEventType.CREATE));
             }
             tables.add(currentTable);
@@ -476,7 +510,7 @@ public class Db2StreamingChangeEventSource
     private static class ChangeTablePointer
             extends ChangeTableResultSet<Db2ChangeTable, TxLogPosition> {
 
-        public ChangeTablePointer(Db2ChangeTable changeTable, ResultSet resultSet) {
+        ChangeTablePointer(Db2ChangeTable changeTable, ResultSet resultSet) {
             super(changeTable, resultSet, COL_DATA);
         }
 

@@ -36,4 +36,24 @@ public class StoppableChangeEventSourceContext
     public boolean isRunning() {
         return isRunning;
     }
+
+    // The pause/resume streaming hooks below were added to ChangeEventSourceContext in Debezium
+    // 2.x. The Flink incremental source does not use the read-only incremental-snapshot pause
+    // mechanism, so they are implemented as no-ops.
+    @Override
+    public boolean isPaused() {
+        return false;
+    }
+
+    @Override
+    public void resumeStreaming() throws InterruptedException {}
+
+    @Override
+    public void waitSnapshotCompletion() throws InterruptedException {}
+
+    @Override
+    public void streamingPaused() {}
+
+    @Override
+    public void waitStreamingPaused() throws InterruptedException {}
 }

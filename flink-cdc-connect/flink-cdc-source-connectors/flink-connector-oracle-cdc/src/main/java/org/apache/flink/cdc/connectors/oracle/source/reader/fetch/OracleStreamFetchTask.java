@@ -29,12 +29,13 @@ import io.debezium.connector.oracle.OracleConnectorConfig;
 import io.debezium.connector.oracle.OracleDatabaseSchema;
 import io.debezium.connector.oracle.OracleOffsetContext;
 import io.debezium.connector.oracle.OraclePartition;
-import io.debezium.connector.oracle.OracleStreamingChangeEventSourceMetrics;
 import io.debezium.connector.oracle.logminer.LogMinerStreamingChangeEventSource;
+import io.debezium.connector.oracle.logminer.LogMinerStreamingChangeEventSourceMetrics;
 import io.debezium.connector.oracle.logminer.processor.LogMinerEventProcessor;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.relational.TableId;
+import io.debezium.snapshot.SnapshotterService;
 import io.debezium.util.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,7 +105,7 @@ public class OracleStreamFetchTask implements FetchTask<SourceSplitBase> {
 
         private final OracleDatabaseSchema schema;
 
-        private final OracleStreamingChangeEventSourceMetrics metrics;
+        private final LogMinerStreamingChangeEventSourceMetrics metrics;
 
         public RedoLogSplitReadTask(
                 OracleConnectorConfig connectorConfig,
@@ -114,7 +115,7 @@ public class OracleStreamFetchTask implements FetchTask<SourceSplitBase> {
                 ErrorHandler errorHandler,
                 OracleDatabaseSchema schema,
                 Configuration jdbcConfig,
-                OracleStreamingChangeEventSourceMetrics metrics,
+                LogMinerStreamingChangeEventSourceMetrics metrics,
                 StreamSplit redoLogSplit) {
             super(
                     connectorConfig,
@@ -124,7 +125,11 @@ public class OracleStreamFetchTask implements FetchTask<SourceSplitBase> {
                     Clock.SYSTEM,
                     schema,
                     jdbcConfig,
-                    metrics);
+                    metrics,
+                    // Debezium 2.x added a SnapshotterService parameter; it is only retained by the
+                    // streaming source and not used while streaming, so the connector's registered
+                    // service is supplied here.
+                    connectorConfig.getServiceRegistry().tryGetService(SnapshotterService.class));
             this.redoLogSplit = redoLogSplit;
             this.eventDispatcher = eventDispatcher;
             this.watermarkDispatcher = watermarkDispatcher;

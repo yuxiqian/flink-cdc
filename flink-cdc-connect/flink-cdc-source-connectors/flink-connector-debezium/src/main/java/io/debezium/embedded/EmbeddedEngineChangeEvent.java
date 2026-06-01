@@ -3,27 +3,33 @@
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
  */
-
 package io.debezium.embedded;
 
-import org.apache.flink.cdc.debezium.internal.DebeziumChangeFetcher;
-
 import io.debezium.engine.ChangeEvent;
+import io.debezium.engine.Header;
 import io.debezium.engine.RecordChangeEvent;
 import org.apache.kafka.connect.source.SourceRecord;
 
+import java.util.List;
+
 /**
- * Copied from Debezium project. Make it public to be accessible from {@link DebeziumChangeFetcher}.
+ * Copied from Debezium 2.7.4.Final.
+ *
+ * <p>Make the class and constructor public so they can be instantiated from {@code
+ * org.apache.flink.cdc.debezium.internal.DebeziumChangeConsumer}.
  */
-public class EmbeddedEngineChangeEvent<K, V> implements ChangeEvent<K, V>, RecordChangeEvent<V> {
+public class EmbeddedEngineChangeEvent<K, V, H> implements ChangeEvent<K, V>, RecordChangeEvent<V> {
 
     private final K key;
     private final V value;
+    private final List<Header<H>> headers;
     private final SourceRecord sourceRecord;
 
-    public EmbeddedEngineChangeEvent(K key, V value, SourceRecord sourceRecord) {
+    public EmbeddedEngineChangeEvent(
+            K key, V value, List<Header<H>> headers, SourceRecord sourceRecord) {
         this.key = key;
         this.value = value;
+        this.headers = headers;
         this.sourceRecord = sourceRecord;
     }
 
@@ -37,6 +43,12 @@ public class EmbeddedEngineChangeEvent<K, V> implements ChangeEvent<K, V>, Recor
         return value;
     }
 
+    @SuppressWarnings("unchecked")
+    @Override
+    public List<Header<H>> headers() {
+        return headers;
+    }
+
     @Override
     public V record() {
         return value;
@@ -45,6 +57,11 @@ public class EmbeddedEngineChangeEvent<K, V> implements ChangeEvent<K, V>, Recor
     @Override
     public String destination() {
         return sourceRecord.topic();
+    }
+
+    @Override
+    public Integer partition() {
+        return sourceRecord.kafkaPartition();
     }
 
     public SourceRecord sourceRecord() {

@@ -28,7 +28,7 @@ import org.apache.flink.cdc.connectors.postgres.source.schema.SchemaDispatcher;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.postgresql.PostgresConnectorConfig;
 import io.debezium.connector.postgresql.PostgresEventDispatcher;
-import io.debezium.heartbeat.HeartbeatFactory;
+import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.spi.ChangeEventCreator;
@@ -36,8 +36,8 @@ import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionFilters;
 import io.debezium.schema.DatabaseSchema;
-import io.debezium.schema.TopicSelector;
-import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.schema.SchemaNameAdjuster;
+import io.debezium.spi.topic.TopicNamingStrategy;
 import org.apache.kafka.connect.source.SourceRecord;
 
 import java.util.Map;
@@ -50,25 +50,31 @@ public class CDCPostgresDispatcher extends PostgresEventDispatcher<TableId>
 
     public CDCPostgresDispatcher(
             PostgresConnectorConfig connectorConfig,
-            TopicSelector topicSelector,
-            DatabaseSchema schema,
-            ChangeEventQueue queue,
-            DataCollectionFilters.DataCollectionFilter filter,
+            TopicNamingStrategy<TableId> topicNamingStrategy,
+            DatabaseSchema<TableId> schema,
+            ChangeEventQueue<DataChangeEvent> queue,
+            DataCollectionFilters.DataCollectionFilter<TableId> filter,
             ChangeEventCreator changeEventCreator,
             EventMetadataProvider metadataProvider,
-            HeartbeatFactory heartbeatFactory,
+            Heartbeat heartbeat,
             SchemaNameAdjuster schemaNameAdjuster) {
+        // In Debezium 2.7.4 the (Postgres)EventDispatcher takes a Heartbeat (instead of a
+        // HeartbeatFactory) plus an InconsistentSchemaHandler and a SignalProcessor. The Flink
+        // incremental source does not use schema-inconsistency handling nor signals here, so both
+        // are passed as null.
         super(
                 connectorConfig,
-                topicSelector,
+                topicNamingStrategy,
                 schema,
                 queue,
                 filter,
                 changeEventCreator,
+                null,
                 metadataProvider,
-                heartbeatFactory,
-                schemaNameAdjuster);
-        this.topic = topicSelector.getPrimaryTopic();
+                heartbeat,
+                schemaNameAdjuster,
+                null);
+        this.topic = connectorConfig.getLogicalName();
         this.queue = queue;
     }
 

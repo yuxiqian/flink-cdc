@@ -40,7 +40,10 @@ public class CustomMySqlAntlrDdlParser extends MySqlAntlrDdlParser {
 
     public CustomMySqlAntlrDdlParser(
             boolean includeComments, boolean tinyInt1isBit, boolean isTableIdCaseInsensitive) {
-        super(true, false, includeComments, null, Tables.TableFilter.includeAll());
+        // Debezium 2.7.4: MySqlAntlrDdlParser constructor gained a trailing
+        // BinlogCharsetRegistry parameter; pass null as upstream's convenience
+        // constructors do (no charset registry needed for DDL-only parsing).
+        super(true, false, includeComments, null, Tables.TableFilter.includeAll(), null);
         this.parsedEvents = new LinkedList<>();
         this.tinyInt1isBit = tinyInt1isBit;
         this.isTableIdCaseInsensitive = isTableIdCaseInsensitive;

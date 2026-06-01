@@ -17,9 +17,8 @@
 
 package org.apache.flink.cdc.connectors.db2.source.utils;
 
-import io.debezium.config.Configuration;
 import io.debezium.connector.db2.Db2Connection;
-import io.debezium.jdbc.JdbcConfiguration;
+import io.debezium.connector.db2.Db2ConnectorConfig;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 import io.debezium.relational.RelationalTableFilters;
@@ -40,8 +39,9 @@ public class Db2ConnectionUtils {
 
     public static Db2Connection createDb2Connection(
             RelationalDatabaseConnectorConfig connectorConfig) {
-        Configuration dbzConnectorConfig = connectorConfig.getJdbcConfig();
-        return new Db2Connection(JdbcConfiguration.adapt(dbzConnectorConfig));
+        // In 2.7.4 the Db2Connection constructor takes a Db2ConnectorConfig directly (it reads the
+        // platform adapter and cdc schemas from it). Db2 always supplies a Db2ConnectorConfig here.
+        return new Db2Connection((Db2ConnectorConfig) connectorConfig);
     }
 
     public static List<TableId> listTables(JdbcConnection jdbc, RelationalTableFilters tableFilters)

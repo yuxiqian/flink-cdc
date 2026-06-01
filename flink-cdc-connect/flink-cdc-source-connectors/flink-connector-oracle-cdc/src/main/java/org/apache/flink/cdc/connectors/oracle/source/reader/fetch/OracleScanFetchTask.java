@@ -31,7 +31,9 @@ import io.debezium.connector.oracle.OraclePartition;
 import io.debezium.connector.oracle.logminer.LogMinerOracleOffsetContextLoader;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.EventDispatcher;
+import io.debezium.pipeline.signal.actions.snapshotting.SnapshotConfiguration;
 import io.debezium.pipeline.source.AbstractSnapshotChangeEventSource;
+import io.debezium.pipeline.source.SnapshottingTask;
 import io.debezium.pipeline.source.spi.SnapshotProgressListener;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
 import io.debezium.pipeline.spi.SnapshotResult;
@@ -51,6 +53,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Collections;
 
 import static org.apache.flink.cdc.connectors.oracle.source.reader.fetch.OracleStreamFetchTask.RedoLogSplitReadTask;
 import static org.apache.flink.cdc.connectors.oracle.source.utils.OracleUtils.buildSplitScanQuery;
@@ -171,7 +174,10 @@ public class OracleScanFetchTask extends AbstractScanFetchTask {
                 OracleConnection jdbcConnection,
                 EventDispatcher<OraclePartition, TableId> eventDispatcher,
                 SnapshotSplit snapshotSplit) {
-            super(connectorConfig, snapshotProgressListener);
+            // Debezium 2.x added a NotificationService parameter. This snapshot task overrides the
+            // whole execution path (execute/doExecute/prepare/getSnapshottingTask), so the base
+            // class never dispatches notifications; null is therefore safe here.
+            super(connectorConfig, snapshotProgressListener, null);
             this.offsetContext = previousOffset;
             this.connectorConfig = connectorConfig;
             this.databaseSchema = databaseSchema;
@@ -182,7 +188,8 @@ public class OracleScanFetchTask extends AbstractScanFetchTask {
             this.snapshotProgressListener = snapshotProgressListener;
         }
 
-        @Override
+        // Not an @Override since Debezium 2.x changed the base execute() signature to take a
+        // SnapshottingTask; Flink CDC invokes this method directly from the fetch task.
         public SnapshotResult<OracleOffsetContext> execute(
                 ChangeEventSourceContext context,
                 OraclePartition partition,
@@ -191,7 +198,7 @@ public class OracleScanFetchTask extends AbstractScanFetchTask {
             SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
             final SnapshotContext<OraclePartition, OracleOffsetContext> ctx;
             try {
-                ctx = prepare(partition);
+                ctx = prepare(partition, snapshottingTask.isOnDemand());
             } catch (Exception e) {
                 LOG.error("Failed to initialize snapshot context.", e);
                 throw new RuntimeException(e);
@@ -220,23 +227,38 @@ public class OracleScanFetchTask extends AbstractScanFetchTask {
         }
 
         @Override
-        protected SnapshottingTask getSnapshottingTask(
+        public SnapshottingTask getSnapshottingTask(
                 OraclePartition partition, OracleOffsetContext previousOffset) {
-            return new SnapshottingTask(false, true);
+            // Debezium 2.x SnapshottingTask additionally takes the captured data collections,
+            // snapshot-select overrides and an on-demand flag; none apply to a Flink snapshot
+            // split.
+            return new SnapshottingTask(
+                    false, true, Collections.emptyList(), Collections.emptyMap(), false);
+        }
+
+        @Override
+        public SnapshottingTask getBlockingSnapshottingTask(
+                OraclePartition partition,
+                OracleOffsetContext previousOffset,
+                SnapshotConfiguration snapshotConfiguration) {
+            // Signal-based blocking snapshots are not used by the Flink snapshot-split fetch task.
+            return new SnapshottingTask(
+                    false, true, Collections.emptyList(), Collections.emptyMap(), true);
         }
 
         @Override
         protected SnapshotContext<OraclePartition, OracleOffsetContext> prepare(
-                OraclePartition partition) throws Exception {
-            return new OracleSnapshotContext(partition);
+                OraclePartition partition, boolean onDemand) throws Exception {
+            return new OracleSnapshotContext(partition, onDemand);
         }
 
         private static class OracleSnapshotContext
                 extends RelationalSnapshotChangeEventSource.RelationalSnapshotContext<
                         OraclePartition, OracleOffsetContext> {
 
-            public OracleSnapshotContext(OraclePartition partition) throws SQLException {
-                super(partition, "");
+            public OracleSnapshotContext(OraclePartition partition, boolean onDemand)
+                    throws SQLException {
+                super(partition, "", onDemand);
             }
         }
 
@@ -293,8 +315,7 @@ public class OracleScanFetchTask extends AbstractScanFetchTask {
 
                 while (rs.next()) {
                     rows++;
-                    final Object[] row =
-                            jdbcConnection.rowToArray(table, databaseSchema, rs, columnArray);
+                    final Object[] row = jdbcConnection.rowToArray(table, rs, columnArray);
                     if (logTimer.expired()) {
                         long stop = clock.currentTimeInMillis();
                         LOG.info(
@@ -328,7 +349,7 @@ public class OracleScanFetchTask extends AbstractScanFetchTask {
                 Object[] row) {
             snapshotContext.offset.event(tableId, clock.currentTime());
             return new SnapshotChangeRecordEmitter<>(
-                    snapshotContext.partition, snapshotContext.offset, row, clock);
+                    snapshotContext.partition, snapshotContext.offset, row, clock, connectorConfig);
         }
 
         private Threads.Timer getTableScanLogTimer() {

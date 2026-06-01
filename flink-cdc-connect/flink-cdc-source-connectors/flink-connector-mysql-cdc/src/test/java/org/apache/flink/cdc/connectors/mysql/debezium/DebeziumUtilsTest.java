@@ -21,7 +21,7 @@ import org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceConfig;
 import org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceConfigFactory;
 import org.apache.flink.cdc.connectors.mysql.table.StartupOptions;
 
-import io.debezium.connector.mysql.MySqlConnection;
+import io.debezium.connector.mysql.jdbc.MySqlConnection;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -33,15 +33,23 @@ import java.util.Properties;
 class DebeziumUtilsTest {
     @Test
     void testCreateMySqlConnection() {
-        // test without set useSSL
+        // test without set useSSL.
+        // Since Debezium 2.7.x the jdbc url is rendered from
+        // io.debezium.connector.mysql.jdbc.MySqlConnectionConfiguration#URL_PATTERN, which lists
+        // the
+        // default jdbc properties in a different order than the pre-2.7 flink-cdc patch. When the
+        // user does not override useSSL, SSL is still disabled by default, but that is now conveyed
+        // through the "sslMode=disabled" connection property (passed to the driver, not rendered in
+        // the connection string) instead of the legacy "useSSL=false" url parameter, so the no-SSL
+        // case no longer contains a "useSSL" entry in the url.
         Properties jdbcProps = new Properties();
         jdbcProps.setProperty("onlyTest", "test");
         MySqlSourceConfig configWithoutUseSSL = getConfig(jdbcProps);
         MySqlConnection connection0 = DebeziumUtils.createMySqlConnection(configWithoutUseSSL);
         assertJdbcUrl(
-                "jdbc:mysql://localhost:3306/?useSSL=false&connectTimeout=20000&useInformationSchema=true"
-                        + "&nullCatalogMeansCurrent=false&characterSetResults=UTF-8&onlyTest=test"
-                        + "&zeroDateTimeBehavior=CONVERT_TO_NULL&characterEncoding=UTF-8&useUnicode=true",
+                "jdbc:mysql://localhost:3306/?useInformationSchema=true&nullCatalogMeansCurrent=false"
+                        + "&useUnicode=true&characterEncoding=UTF-8&characterSetResults=UTF-8"
+                        + "&zeroDateTimeBehavior=CONVERT_TO_NULL&connectTimeout=20000&onlyTest=test",
                 connection0.connectionString());
 
         // test with set useSSL=false
@@ -49,9 +57,9 @@ class DebeziumUtilsTest {
         MySqlSourceConfig configNotUseSSL = getConfig(jdbcProps);
         MySqlConnection connection1 = DebeziumUtils.createMySqlConnection(configNotUseSSL);
         assertJdbcUrl(
-                "jdbc:mysql://localhost:3306/?connectTimeout=20000&useInformationSchema=true"
-                        + "&nullCatalogMeansCurrent=false&characterSetResults=UTF-8&useSSL=false&onlyTest=test"
-                        + "&zeroDateTimeBehavior=CONVERT_TO_NULL&characterEncoding=UTF-8&useUnicode=true",
+                "jdbc:mysql://localhost:3306/?useInformationSchema=true&nullCatalogMeansCurrent=false"
+                        + "&useUnicode=true&characterEncoding=UTF-8&characterSetResults=UTF-8"
+                        + "&zeroDateTimeBehavior=CONVERT_TO_NULL&connectTimeout=20000&useSSL=false&onlyTest=test",
                 connection1.connectionString());
 
         // test with set useSSL=true
@@ -59,9 +67,9 @@ class DebeziumUtilsTest {
         MySqlSourceConfig configUseSSL = getConfig(jdbcProps);
         MySqlConnection connection2 = DebeziumUtils.createMySqlConnection(configUseSSL);
         assertJdbcUrl(
-                "jdbc:mysql://localhost:3306/?connectTimeout=20000&useInformationSchema=true"
-                        + "&nullCatalogMeansCurrent=false&characterSetResults=UTF-8&useSSL=true&onlyTest=test"
-                        + "&zeroDateTimeBehavior=CONVERT_TO_NULL&characterEncoding=UTF-8&useUnicode=true",
+                "jdbc:mysql://localhost:3306/?useInformationSchema=true&nullCatalogMeansCurrent=false"
+                        + "&useUnicode=true&characterEncoding=UTF-8&characterSetResults=UTF-8"
+                        + "&zeroDateTimeBehavior=CONVERT_TO_NULL&connectTimeout=20000&useSSL=true&onlyTest=test",
                 connection2.connectionString());
     }
 

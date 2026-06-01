@@ -159,7 +159,7 @@ public class OracleSource {
             if (port != null) {
                 props.setProperty("database.port", String.valueOf(port));
             }
-            props.setProperty("database.history.skip.unparseable.ddl", String.valueOf(true));
+            props.setProperty("schema.history.internal.skip.unparseable.ddl", String.valueOf(true));
             props.setProperty("database.dbname", checkNotNull(database));
             if (schemaList != null) {
                 props.setProperty("schema.include.list", String.join(",", schemaList));

@@ -178,5 +178,24 @@ public class SqlServerStreamFetchTask implements FetchTask<SourceSplitBase> {
         public boolean isRunning() {
             return taskRunning;
         }
+
+        // Methods below were added to ChangeEventSourceContext in Debezium 2.7.4; flink-cdc drives
+        // the streaming lifecycle itself, so the pause/resume hooks are no-ops.
+        @Override
+        public boolean isPaused() {
+            return false;
+        }
+
+        @Override
+        public void resumeStreaming() throws InterruptedException {}
+
+        @Override
+        public void waitSnapshotCompletion() throws InterruptedException {}
+
+        @Override
+        public void streamingPaused() {}
+
+        @Override
+        public void waitStreamingPaused() throws InterruptedException {}
     }
 }

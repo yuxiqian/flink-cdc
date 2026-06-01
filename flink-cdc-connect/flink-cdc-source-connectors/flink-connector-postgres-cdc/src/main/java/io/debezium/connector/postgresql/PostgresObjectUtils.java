@@ -25,7 +25,7 @@ import io.debezium.connector.postgresql.connection.ReplicationConnection;
 import io.debezium.connector.postgresql.spi.SlotState;
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges;
-import io.debezium.schema.TopicSelector;
+import io.debezium.spi.topic.TopicNamingStrategy;
 import io.debezium.util.Clock;
 import io.debezium.util.Metronome;
 import org.slf4j.Logger;
@@ -48,16 +48,14 @@ public class PostgresObjectUtils {
     public static RelationAwarePostgresSchema newSchema(
             PostgresConnection connection,
             PostgresConnectorConfig config,
-            TypeRegistry typeRegistry,
-            TopicSelector<TableId> topicSelector,
+            TopicNamingStrategy<TableId> topicNamingStrategy,
             PostgresValueConverter valueConverter)
             throws SQLException {
         RelationAwarePostgresSchema schema =
                 new RelationAwarePostgresSchema(
                         config,
-                        typeRegistry,
                         connection.getDefaultValueConverter(),
-                        topicSelector,
+                        topicNamingStrategy,
                         valueConverter);
         schema.refresh(connection, false);
         return schema;
@@ -66,17 +64,15 @@ public class PostgresObjectUtils {
     public static RelationAwarePostgresSchema newSchema(
             PostgresConnection connection,
             PostgresConnectorConfig config,
-            TypeRegistry typeRegistry,
-            TopicSelector<TableId> topicSelector,
+            TopicNamingStrategy<TableId> topicNamingStrategy,
             PostgresValueConverter valueConverter,
             Collection<TableChanges.TableChange> tableChanges)
             throws SQLException {
         RelationAwarePostgresSchema schema =
                 new RelationAwarePostgresSchema(
                         config,
-                        typeRegistry,
                         connection.getDefaultValueConverter(),
-                        topicSelector,
+                        topicNamingStrategy,
                         valueConverter);
         tableChanges.forEach(tableChange -> schema.buildAndRegisterSchema(tableChange.getTable()));
         return schema;
@@ -85,8 +81,8 @@ public class PostgresObjectUtils {
     public static PostgresTaskContext newTaskContext(
             PostgresConnectorConfig connectorConfig,
             PostgresSchema schema,
-            TopicSelector<TableId> topicSelector) {
-        return new PostgresTaskContext(connectorConfig, schema, topicSelector);
+            TopicNamingStrategy<TableId> topicNamingStrategy) {
+        return new PostgresTaskContext(connectorConfig, schema, topicNamingStrategy);
     }
 
     public static PostgresEventMetadataProvider newEventMetadataProvider() {
@@ -109,15 +105,11 @@ public class PostgresObjectUtils {
     // modified from
     // io.debezium.connector.postgresql.PostgresConnectorTask.createReplicationConnection.
     // pass connectorConfig instead of maxRetries and retryDelay as parameters.
-    // - old: ReplicationConnection createReplicationConnection(PostgresTaskContext taskContext,
-    // boolean doSnapshot, int maxRetries, Duration retryDelay)
-    // - new: ReplicationConnection createReplicationConnection(PostgresTaskContext taskContext,
-    // PostgresConnection postgresConnection, boolean doSnapshot, PostgresConnectorConfig
-    // connectorConfig)
+    // - debezium 2.7.4: PostgresTaskContext.createReplicationConnection(PostgresConnection
+    // jdbcConnection) no longer takes the doSnapshot flag, so it has been dropped here too.
     public static ReplicationConnection createReplicationConnection(
             PostgresTaskContext taskContext,
             PostgresConnection postgresConnection,
-            boolean doSnapshot,
             PostgresConnectorConfig connectorConfig) {
         int maxRetries = connectorConfig.maxRetries();
         Duration retryDelay = connectorConfig.retryDelay();
@@ -127,7 +119,7 @@ public class PostgresObjectUtils {
         while (retryCount <= maxRetries) {
             try {
                 LOGGER.info("Creating a new replication connection for {}", taskContext);
-                return taskContext.createReplicationConnection(doSnapshot, postgresConnection);
+                return taskContext.createReplicationConnection(postgresConnection);
             } catch (SQLException ex) {
                 retryCount++;
                 if (retryCount > maxRetries) {

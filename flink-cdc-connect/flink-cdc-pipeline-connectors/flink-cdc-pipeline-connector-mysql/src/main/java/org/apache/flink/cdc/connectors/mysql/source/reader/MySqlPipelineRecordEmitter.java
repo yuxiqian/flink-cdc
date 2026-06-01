@@ -313,9 +313,17 @@ public class MySqlPipelineRecordEmitter extends MySqlRecordEmitter<Event> {
                                     RelationalDatabaseConnectorConfig.INCLUDE_SCHEMA_COMMENTS
                                             .name(),
                                     false);
+            // Debezium 2.7.4: MySqlAntlrDdlParser constructor gained a trailing
+            // BinlogCharsetRegistry parameter; pass null (no charset registry needed for
+            // DDL-only parsing here).
             mySqlAntlrDdlParser =
                     new MySqlAntlrDdlParser(
-                            true, false, includeComments, null, Tables.TableFilter.includeAll());
+                            true,
+                            false,
+                            includeComments,
+                            null,
+                            Tables.TableFilter.includeAll(),
+                            null);
         }
         return mySqlAntlrDdlParser;
     }

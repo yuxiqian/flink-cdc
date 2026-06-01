@@ -58,6 +58,19 @@ limitations under the License.
             <version>${project.version}</version>
         </dependency>
 
+        <!--
+            Debezium 2.7.4 no longer brings jsr305 transitively (debezium-core dropped the
+            com.google.code.findbugs:jsr305 dependency that previously provided the
+            javax.annotation / javax.annotation.concurrent annotations used by this module and
+            downstream connectors). Declare it explicitly here so that javax.annotation.Nullable,
+            ThreadSafe and GuardedBy stay available to this foundation module and its dependents.
+        -->
+        <dependency>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>jsr305</artifactId>
+            <version>3.0.2</version>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-test-utils</artifactId>

@@ -54,7 +54,13 @@ import java.util.stream.Collectors;
 
 import static org.apache.flink.cdc.connectors.mysql.utils.MySqlTypeUtils.fromDbzColumn;
 
-/** Copied from {@link AlterTableParserListener} in Debezium 1.9.8.Final. */
+/**
+ * Copied from {@link AlterTableParserListener} in Debezium 2.7.4.Final.
+ *
+ * <p>Adapted for Debezium 2.7.4: {@code Tables.overwriteTable} gained a trailing {@code
+ * List<Attribute>} parameter, and {@code MySqlParser.ColumnDeclarationContext} no longer exposes
+ * {@code uid()} directly (the column name is now derived via {@code fullColumnName()}).
+ */
 public class CustomAlterTableParserListener extends MySqlParserBaseListener {
 
     private static final int STARTING_INDEX = 1;
@@ -96,7 +102,8 @@ public class CustomAlterTableParserListener extends MySqlParserBaseListener {
                             tableId,
                             original.columns(),
                             original.primaryKeyColumnNames(),
-                            original.defaultCharsetName());
+                            original.defaultCharsetName(),
+                            original.attributes());
             parser.signalCreateTable(tableId, ctx);
             Schema.Builder builder = Schema.newBuilder();
             original.columns().forEach(column -> builder.column(toCdcColumn(column)));
@@ -170,7 +177,17 @@ public class CustomAlterTableParserListener extends MySqlParserBaseListener {
     public void enterColumnDeclaration(MySqlParser.ColumnDeclarationContext ctx) {
         parser.runIfNotNull(
                 () -> {
-                    String columnName = parser.parseName(ctx.uid());
+                    // Debezium 2.7.4: ColumnDeclarationContext no longer exposes uid()
+                    // directly; derive the column name from fullColumnName() as upstream
+                    // TableCommonParserListener now does.
+                    MySqlParser.FullColumnNameContext fullColumnNameContext = ctx.fullColumnName();
+                    List<MySqlParser.DottedIdContext> dottedIdContextList =
+                            fullColumnNameContext.dottedId();
+                    MySqlParser.UidContext uidContext = fullColumnNameContext.uid();
+                    if (!dottedIdContextList.isEmpty()) {
+                        uidContext = dottedIdContextList.get(dottedIdContextList.size() - 1).uid();
+                    }
+                    String columnName = parser.parseName(uidContext);
                     ColumnEditor columnEditor = Column.editor().name(columnName);
                     if (columnDefinitionListener == null) {
                         columnDefinitionListener =

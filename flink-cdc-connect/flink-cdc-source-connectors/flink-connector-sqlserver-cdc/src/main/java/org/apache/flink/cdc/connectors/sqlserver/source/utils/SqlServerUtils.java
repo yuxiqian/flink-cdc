@@ -24,19 +24,19 @@ import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.FlinkRuntimeException;
 
+import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.sqlserver.Lsn;
 import io.debezium.connector.sqlserver.SourceInfo;
 import io.debezium.connector.sqlserver.SqlServerConnection;
 import io.debezium.connector.sqlserver.SqlServerConnectorConfig;
 import io.debezium.connector.sqlserver.SqlServerDatabaseSchema;
-import io.debezium.connector.sqlserver.SqlServerTopicSelector;
 import io.debezium.connector.sqlserver.SqlServerValueConverters;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.relational.Column;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
-import io.debezium.schema.TopicSelector;
-import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.schema.SchemaNameAdjuster;
+import io.debezium.spi.topic.TopicNamingStrategy;
 import org.apache.kafka.connect.source.SourceRecord;
 
 import javax.annotation.Nullable;
@@ -229,8 +229,9 @@ public class SqlServerUtils {
 
     public static SqlServerDatabaseSchema createSqlServerDatabaseSchema(
             SqlServerConnectorConfig connectorConfig, SqlServerConnection connection) {
-        TopicSelector<TableId> topicSelector =
-                SqlServerTopicSelector.defaultSelector(connectorConfig);
+        TopicNamingStrategy<TableId> topicNamingStrategy =
+                connectorConfig.getTopicNamingStrategy(
+                        CommonConnectorConfig.TOPIC_NAMING_STRATEGY, true);
         SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
         SqlServerValueConverters valueConverters =
                 new SqlServerValueConverters(
@@ -242,7 +243,7 @@ public class SqlServerUtils {
                 connectorConfig,
                 connection.getDefaultValueConverter(),
                 valueConverters,
-                topicSelector,
+                topicNamingStrategy,
                 schemaNameAdjuster);
     }
 

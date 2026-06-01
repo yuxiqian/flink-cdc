@@ -28,36 +28,40 @@ import org.apache.flink.cdc.connectors.mysql.source.split.MySqlSplit;
 import com.github.shyiko.mysql.binlog.BinaryLogClient;
 import io.debezium.connector.AbstractSourceInfo;
 import io.debezium.connector.base.ChangeEventQueue;
-import io.debezium.connector.mysql.GtidSet;
-import io.debezium.connector.mysql.GtidUtils;
+import io.debezium.connector.binlog.gtid.GtidSet;
 import io.debezium.connector.mysql.MySqlChangeEventSourceMetricsFactory;
-import io.debezium.connector.mysql.MySqlConnection;
 import io.debezium.connector.mysql.MySqlConnectorConfig;
 import io.debezium.connector.mysql.MySqlDatabaseSchema;
 import io.debezium.connector.mysql.MySqlOffsetContext;
 import io.debezium.connector.mysql.MySqlPartition;
 import io.debezium.connector.mysql.MySqlStreamingChangeEventSourceMetrics;
-import io.debezium.connector.mysql.MySqlTopicSelector;
+import io.debezium.connector.mysql.gtid.GtidUtils;
+import io.debezium.connector.mysql.gtid.MySqlGtidSet;
+import io.debezium.connector.mysql.jdbc.MySqlConnection;
 import io.debezium.data.Envelope;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.metrics.SnapshotChangeEventSourceMetrics;
 import io.debezium.pipeline.metrics.StreamingChangeEventSourceMetrics;
+import io.debezium.pipeline.notification.NotificationService;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Offsets;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DataCollectionId;
-import io.debezium.schema.TopicSelector;
+import io.debezium.schema.SchemaFactory;
+import io.debezium.schema.SchemaNameAdjuster;
+import io.debezium.snapshot.SnapshotterService;
+import io.debezium.spi.schema.DataCollectionId;
+import io.debezium.spi.topic.TopicNamingStrategy;
 import io.debezium.util.Clock;
 import io.debezium.util.Collect;
-import io.debezium.util.SchemaNameAdjuster;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -88,7 +92,7 @@ public class StatefulTaskContext implements AutoCloseable {
     private MySqlTaskContextImpl taskContext;
     private MySqlOffsetContext offsetContext;
     private MySqlPartition mySqlPartition;
-    private TopicSelector<TableId> topicSelector;
+    private TopicNamingStrategy<TableId> topicSelector;
     private SnapshotChangeEventSourceMetrics<MySqlPartition> snapshotChangeEventSourceMetrics;
     private StreamingChangeEventSourceMetrics<MySqlPartition> streamingChangeEventSourceMetrics;
     private EventDispatcherImpl<TableId> dispatcher;
@@ -96,6 +100,8 @@ public class StatefulTaskContext implements AutoCloseable {
     private SignalEventDispatcher signalEventDispatcher;
     private ChangeEventQueue<DataChangeEvent> queue;
     private ErrorHandler errorHandler;
+    private SnapshotterService snapshotterService;
+    private NotificationService<MySqlPartition, MySqlOffsetContext> notificationService;
 
     public StatefulTaskContext(
             MySqlSourceConfig sourceConfig,
@@ -112,7 +118,8 @@ public class StatefulTaskContext implements AutoCloseable {
     public void configure(MySqlSplit mySqlSplit) {
         // initial stateful objects
         final boolean tableIdCaseInsensitive = connection.isTableIdCaseSensitive();
-        this.topicSelector = MySqlTopicSelector.defaultSelector(connectorConfig);
+        this.topicSelector =
+                connectorConfig.getTopicNamingStrategy(MySqlConnectorConfig.TOPIC_NAMING_STRATEGY);
         EmbeddedFlinkDatabaseHistory.registerHistory(
                 sourceConfig
                         .getDbzConfiguration()
@@ -123,7 +130,7 @@ public class StatefulTaskContext implements AutoCloseable {
         this.databaseSchema =
                 DebeziumUtils.createMySqlDatabaseSchema(connectorConfig, tableIdCaseInsensitive);
 
-        this.mySqlPartition = new MySqlPartition(connectorConfig.getLogicalName());
+        this.mySqlPartition = new MySqlPartition(connectorConfig.getLogicalName(), null);
 
         this.offsetContext =
                 loadStartingOffsetState(new MySqlOffsetContext.Loader(connectorConfig), mySqlSplit);
@@ -164,7 +171,7 @@ public class StatefulTaskContext implements AutoCloseable {
 
         this.signalEventDispatcher =
                 new SignalEventDispatcher(
-                        offsetContext.getOffset(), topicSelector.getPrimaryTopic(), queue);
+                        offsetContext.getOffset(), topicSelector.schemaChangeTopic(), queue);
 
         final MySqlChangeEventSourceMetricsFactory changeEventSourceMetricsFactory =
                 new MySqlChangeEventSourceMetricsFactory(
@@ -178,6 +185,22 @@ public class StatefulTaskContext implements AutoCloseable {
                         taskContext, queue, metadataProvider);
         this.errorHandler =
                 new MySqlErrorHandler(connectorConfig, queue, taskContext, sourceConfig);
+
+        // Debezium 2.7 threads a SnapshotterService through the binlog/snapshot change event
+        // sources
+        // and a NotificationService through the snapshot change event source. flink-cdc does not
+        // run
+        // Debezium's BaseSourceTask, so these are created here.
+        this.snapshotterService =
+                DebeziumUtils.createSnapshotterService(
+                        connectorConfig, sourceConfig.getDbzConfiguration());
+        this.notificationService =
+                new NotificationService<>(
+                        Collections.emptyList(),
+                        connectorConfig,
+                        SchemaFactory.get(),
+                        // flink-cdc does not emit notification records.
+                        record -> {});
     }
 
     private void validateAndLoadDatabaseHistory(
@@ -227,16 +250,15 @@ public class StatefulTaskContext implements AutoCloseable {
             return true; // start at beginning ...
         }
 
-        String availableGtidStr = connection.knownGtidSet();
-        if (availableGtidStr == null || availableGtidStr.trim().isEmpty()) {
+        // Get the GTID set that is available in the server ...
+        // In Debezium 2.7 knownGtidSet() returns a GtidSet object instead of a String.
+        GtidSet availableGtidSet = connection.knownGtidSet();
+        if (availableGtidSet == null || availableGtidSet.isEmpty()) {
             // Last offsets had GTIDs but the server does not use them ...
             LOG.warn(
                     "Connector used GTIDs previously, but MySQL does not know of any GTIDs or they are not enabled");
             return false;
         }
-
-        // Get the GTID set that is available in the server ...
-        GtidSet availableGtidSet = new GtidSet(availableGtidStr);
 
         // GTIDs are enabled
         LOG.info("Merging server GTID set {} with restored GTID set {}", availableGtidSet, gtidStr);
@@ -246,7 +268,9 @@ public class StatefulTaskContext implements AutoCloseable {
         // the GTID. This is done to address the issue of being unable to recover from a checkpoint
         // in certain startup
         // modes.
-        GtidSet gtidSet = GtidUtils.fixRestoredGtidSet(availableGtidSet, new GtidSet(gtidStr));
+        MySqlGtidSet gtidSet =
+                GtidUtils.fixRestoredGtidSet(
+                        (MySqlGtidSet) availableGtidSet, new MySqlGtidSet(gtidStr));
         LOG.info("Merged GTID set is {}", gtidSet);
 
         if (gtidSet.isContainedWithin(availableGtidSet)) {
@@ -428,7 +452,7 @@ public class StatefulTaskContext implements AutoCloseable {
         return mySqlPartition;
     }
 
-    public TopicSelector<TableId> getTopicSelector() {
+    public TopicNamingStrategy<TableId> getTopicSelector() {
         return topicSelector;
     }
 
@@ -443,5 +467,13 @@ public class StatefulTaskContext implements AutoCloseable {
 
     public SchemaNameAdjuster getSchemaNameAdjuster() {
         return schemaNameAdjuster;
+    }
+
+    public SnapshotterService getSnapshotterService() {
+        return snapshotterService;
+    }
+
+    public NotificationService<MySqlPartition, MySqlOffsetContext> getNotificationService() {
+        return notificationService;
     }
 }

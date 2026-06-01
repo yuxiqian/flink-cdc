@@ -34,9 +34,9 @@ import io.debezium.connector.mysql.MySqlConnectorConfig;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.heartbeat.HeartbeatFactory;
 import io.debezium.jdbc.JdbcConfiguration;
+import io.debezium.jdbc.JdbcConnection;
 import io.debezium.relational.TableId;
-import io.debezium.schema.TopicSelector;
-import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.schema.SchemaNameAdjuster;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
@@ -49,8 +49,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static io.debezium.config.CommonConnectorConfig.TRANSACTION_TOPIC;
-import static io.debezium.connector.mysql.MySqlConnectorConfig.SERVER_NAME;
+import static io.debezium.config.CommonConnectorConfig.TOPIC_PREFIX;
+import static org.mockito.Mockito.mock;
 
 /** Unit test for {@link org.apache.flink.cdc.connectors.mysql.source.reader.MySqlRecordEmitter}. */
 class MySqlRecordEmitterTest {
@@ -60,17 +60,31 @@ class MySqlRecordEmitterTest {
         Configuration dezConf =
                 JdbcConfiguration.create()
                         .with(Heartbeat.HEARTBEAT_INTERVAL, 100)
-                        .with(TRANSACTION_TOPIC, "fake-topic")
-                        .with(SERVER_NAME, "mysql_binlog_source")
+                        // In Debezium 2.7 the SERVER_NAME field was replaced by TOPIC_PREFIX, and
+                        // TRANSACTION_TOPIC was removed (topics are resolved via
+                        // TopicNamingStrategy).
+                        .with(TOPIC_PREFIX, "mysql_binlog_source")
                         .build();
 
         MySqlConnectorConfig mySqlConfig = new MySqlConnectorConfig(dezConf);
+        // Since Debezium 2.7 HeartbeatFactory#createHeartbeat selects DatabaseHeartbeatImpl
+        // whenever
+        // the connector config is relational and the heartbeat action query is non-null. The action
+        // query defaults to an empty string (not null), so for a MySqlConnectorConfig the database
+        // heartbeat branch is always taken and a HeartbeatConnectionProvider is required (the older
+        // 1.9 code used Strings#isNullOrBlank and fell back to a plain HeartbeatImpl, so the 3-arg
+        // constructor used to be enough). Supply a connection provider backed by a mock JDBC
+        // connection: the empty action query is executed as a no-op and the heartbeat record is
+        // still produced by the inherited HeartbeatImpl logic.
+        JdbcConnection heartbeatConnection = mock(JdbcConnection.class);
         HeartbeatFactory<TableId> heartbeatFactory =
                 new HeartbeatFactory<>(
-                        new MySqlConnectorConfig(dezConf),
-                        TopicSelector.defaultSelector(
-                                mySqlConfig, (id, prefix, delimiter) -> "fake-topic"),
-                        SchemaNameAdjuster.create());
+                        mySqlConfig,
+                        mySqlConfig.getTopicNamingStrategy(
+                                MySqlConnectorConfig.TOPIC_NAMING_STRATEGY),
+                        SchemaNameAdjuster.create(),
+                        () -> heartbeatConnection,
+                        null);
         Heartbeat heartbeat = heartbeatFactory.createHeartbeat();
         BinlogOffset fakeOffset = BinlogOffset.ofBinlogFilePosition("fake-file", 15213L);
         MySqlRecordEmitter<Void> recordEmitter = createRecordEmitter();

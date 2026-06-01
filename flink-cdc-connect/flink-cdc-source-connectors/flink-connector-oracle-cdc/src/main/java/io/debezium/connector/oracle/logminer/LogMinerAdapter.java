@@ -19,6 +19,7 @@ package io.debezium.connector.oracle.logminer;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
+import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.oracle.AbstractStreamingAdapter;
 import io.debezium.connector.oracle.OracleConnection;
 import io.debezium.connector.oracle.OracleConnectorConfig;
@@ -26,19 +27,20 @@ import io.debezium.connector.oracle.OracleConnectorConfig.TransactionSnapshotBou
 import io.debezium.connector.oracle.OracleDatabaseSchema;
 import io.debezium.connector.oracle.OracleOffsetContext;
 import io.debezium.connector.oracle.OraclePartition;
-import io.debezium.connector.oracle.OracleStreamingChangeEventSourceMetrics;
 import io.debezium.connector.oracle.OracleTaskContext;
 import io.debezium.connector.oracle.Scn;
 import io.debezium.document.Document;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.snapshot.incremental.SignalBasedIncrementalSnapshotContext;
+import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.RelationalSnapshotChangeEventSource.RelationalSnapshotContext;
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.HistoryRecordComparator;
+import io.debezium.snapshot.SnapshotterService;
 import io.debezium.util.Clock;
 import io.debezium.util.HexConverter;
 import io.debezium.util.Strings;
@@ -59,12 +61,16 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Copied from Debezium 1.9.8.Final.
+ * Copied from Debezium 2.7.4.Final.
  *
- * <p>Line 356: Replace < condition with <= to be able to catch ongoing transactions during snapshot
- * if current SCN points to START/INSERT/DELETE/UPDATE event.
+ * <p>Line 356 (1.9.8): Replace < condition with <= to be able to catch ongoing transactions during
+ * snapshot if current SCN points to START/INSERT/DELETE/UPDATE event. The same change is re-applied
+ * here in {@link #getPendingTransactionsFromLogs} ("AND START_SCN <= " + currentScn).
+ *
+ * <p>Also keeps the flink-cdc diagnostic logging block in {@link #getPendingTransactions}.
  */
-public class LogMinerAdapter extends AbstractStreamingAdapter {
+public class LogMinerAdapter
+        extends AbstractStreamingAdapter<LogMinerStreamingChangeEventSourceMetrics> {
 
     private static final Duration GET_TRANSACTION_SCN_PAUSE = Duration.ofSeconds(1);
 
@@ -107,7 +113,8 @@ public class LogMinerAdapter extends AbstractStreamingAdapter {
             OracleDatabaseSchema schema,
             OracleTaskContext taskContext,
             Configuration jdbcConfig,
-            OracleStreamingChangeEventSourceMetrics streamingMetrics) {
+            LogMinerStreamingChangeEventSourceMetrics streamingMetrics,
+            SnapshotterService snapshotterService) {
         return new LogMinerStreamingChangeEventSource(
                 connectorConfig,
                 connection,
@@ -116,7 +123,18 @@ public class LogMinerAdapter extends AbstractStreamingAdapter {
                 clock,
                 schema,
                 jdbcConfig,
-                streamingMetrics);
+                streamingMetrics,
+                snapshotterService);
+    }
+
+    @Override
+    public LogMinerStreamingChangeEventSourceMetrics getStreamingMetrics(
+            OracleTaskContext taskContext,
+            ChangeEventQueueMetrics changeEventQueueMetrics,
+            EventMetadataProvider metadataProvider,
+            OracleConnectorConfig connectorConfig) {
+        return new LogMinerStreamingChangeEventSourceMetrics(
+                taskContext, changeEventQueueMetrics, metadataProvider, connectorConfig);
     }
 
     @Override
@@ -148,9 +166,7 @@ public class LogMinerAdapter extends AbstractStreamingAdapter {
         // that prevents switching from a PDB to the root CDB and if invoking the LogMiner APIs on
         // such a connection, the use of commit/rollback by LogMiner will drop/invalidate the save
         // point as well. A separate connection is necessary to preserve the save point.
-        try (OracleConnection conn =
-                new OracleConnection(
-                        connection.config(), () -> getClass().getClassLoader(), false)) {
+        try (OracleConnection conn = new OracleConnection(connection.config(), false)) {
             conn.setAutoCommit(false);
             if (!Strings.isNullOrEmpty(connectorConfig.getPdbName())) {
                 // The next stage cannot be run within the PDB, reset the connection to the CDB.
@@ -159,6 +175,18 @@ public class LogMinerAdapter extends AbstractStreamingAdapter {
             return determineSnapshotOffset(
                     connectorConfig, conn, currentScn.get(), pendingTransactions, tableName);
         }
+    }
+
+    @Override
+    public Scn getOffsetScn(OracleOffsetContext offsetContext) {
+        return offsetContext.getScn();
+    }
+
+    @Override
+    public OracleOffsetContext copyOffset(
+            OracleConnectorConfig connectorConfig, OracleOffsetContext offsetContext) {
+        return new LogMinerOracleOffsetContextLoader(connectorConfig)
+                .load(offsetContext.getOffset());
     }
 
     private Optional<Scn> getCurrentScn(Scn latestTableDdlScn, OracleConnection connection)
@@ -219,10 +247,21 @@ public class LogMinerAdapter extends AbstractStreamingAdapter {
                     }
                     final String pendingTxStartScn = rs.getString(3);
                     if (!Strings.isNullOrEmpty(pendingTxStartScn)) {
-                        // There is a pending transaction, capture state
-                        transactions.put(
-                                HexConverter.convertToHexString(rs.getBytes(2)),
-                                Scn.valueOf(pendingTxStartScn));
+                        final String transactionId =
+                                HexConverter.convertToHexString(rs.getBytes(2));
+                        final Scn transactionStartScn = Scn.valueOf(pendingTxStartScn);
+                        // There is a use case where if the archive logs do not contain sufficient
+                        // logs where the transaction started, LogMiner will return a value of 0 as
+                        // the START_SCN and this can unintentionally cause starting from the
+                        // beginning of time.
+                        if (transactionStartScn.compareTo(Scn.ONE) > 0) {
+                            // There is a pending transaction, capture state
+                            transactions.put(transactionId, transactionStartScn);
+                        } else {
+                            LOGGER.warn(
+                                    "Unable to determine the start SCN, transaction {} will not be included",
+                                    transactionId);
+                        }
                     }
                 }
             } catch (SQLException e) {
@@ -321,8 +360,8 @@ public class LogMinerAdapter extends AbstractStreamingAdapter {
 
     private Scn getOldestScnAvailableInLogs(
             OracleConnectorConfig config, OracleConnection connection) throws SQLException {
-        final Duration archiveLogRetention = config.getLogMiningArchiveLogRetention();
-        final String archiveLogDestinationName = config.getLogMiningArchiveDestinationName();
+        final Duration archiveLogRetention = config.getArchiveLogRetention();
+        final String archiveLogDestinationName = config.getArchiveLogDestinationName();
         return connection.queryAndMap(
                 SqlUtils.oldestFirstChangeQuery(archiveLogRetention, archiveLogDestinationName),
                 rs -> {
@@ -339,13 +378,8 @@ public class LogMinerAdapter extends AbstractStreamingAdapter {
     private List<LogFile> getOrderedLogsFromScn(
             OracleConnectorConfig config, Scn sinceScn, OracleConnection connection)
             throws SQLException {
-        return LogMinerHelper.getLogFilesForOffsetScn(
-                        connection,
-                        sinceScn,
-                        config.getLogMiningArchiveLogRetention(),
-                        config.isArchiveLogOnlyMode(),
-                        config.getLogMiningArchiveDestinationName())
-                .stream()
+        final LogFileCollector collector = new LogFileCollector(config, connection);
+        return collector.getLogs(sinceScn).stream()
                 .sorted(Comparator.comparing(LogFile::getSequence))
                 .collect(Collectors.toList());
     }

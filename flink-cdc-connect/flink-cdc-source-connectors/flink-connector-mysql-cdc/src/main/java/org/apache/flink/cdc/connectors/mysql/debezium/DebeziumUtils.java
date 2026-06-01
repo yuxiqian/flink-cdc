@@ -27,13 +27,13 @@ import com.github.shyiko.mysql.binlog.BinaryLogClient;
 import com.github.shyiko.mysql.binlog.event.EventData;
 import com.github.shyiko.mysql.binlog.event.EventHeaderV4;
 import com.github.shyiko.mysql.binlog.event.RotateEventData;
+import io.debezium.bean.StandardBeanNames;
 import io.debezium.config.Configuration;
-import io.debezium.connector.mysql.MySqlConnection;
+import io.debezium.connector.binlog.jdbc.BinlogSystemVariables;
 import io.debezium.connector.mysql.MySqlConnectorConfig;
 import io.debezium.connector.mysql.MySqlDatabaseSchema;
-import io.debezium.connector.mysql.MySqlSystemVariables;
-import io.debezium.connector.mysql.MySqlTopicSelector;
-import io.debezium.connector.mysql.MySqlValueConverters;
+import io.debezium.connector.mysql.jdbc.MySqlConnection;
+import io.debezium.connector.mysql.jdbc.MySqlValueConverters;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.jdbc.JdbcValueConverters;
@@ -41,8 +41,13 @@ import io.debezium.jdbc.TemporalPrecisionMode;
 import io.debezium.relational.Selectors;
 import io.debezium.relational.TableId;
 import io.debezium.relational.Tables;
-import io.debezium.schema.TopicSelector;
-import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.schema.SchemaNameAdjuster;
+import io.debezium.service.spi.ServiceRegistry;
+import io.debezium.snapshot.SnapshotLockProvider;
+import io.debezium.snapshot.SnapshotQueryProvider;
+import io.debezium.snapshot.SnapshotterService;
+import io.debezium.snapshot.SnapshotterServiceProvider;
+import io.debezium.spi.topic.TopicNamingStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,20 +97,45 @@ public class DebeziumUtils {
                 new MySqlConnection.MySqlConnectionConfiguration(dbzConfiguration, jdbcProperties));
     }
 
+    /**
+     * Creates the Debezium 2.7 {@link SnapshotterService}, which is required by the binlog/snapshot
+     * change event sources. flink-cdc does not run through Debezium's {@code BaseSourceTask}, so
+     * the snapshotter, snapshot-lock and snapshot-query service providers (normally registered by
+     * the task) and the {@code CONNECTOR_CONFIG} bean must be wired up here. The method is
+     * idempotent: the providers/beans are registered once on the connector config's shared
+     * registries.
+     */
+    public static SnapshotterService createSnapshotterService(
+            MySqlConnectorConfig connectorConfig, Configuration dbzConfiguration) {
+        final ServiceRegistry serviceRegistry = connectorConfig.getServiceRegistry();
+        SnapshotterService snapshotterService =
+                serviceRegistry.tryGetService(SnapshotterService.class);
+        if (snapshotterService != null) {
+            return snapshotterService;
+        }
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.CONFIGURATION, dbzConfiguration);
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.CONNECTOR_CONFIG, connectorConfig);
+        serviceRegistry.registerServiceProvider(new SnapshotLockProvider());
+        serviceRegistry.registerServiceProvider(new SnapshotQueryProvider());
+        serviceRegistry.registerServiceProvider(new SnapshotterServiceProvider());
+        return serviceRegistry.tryGetService(SnapshotterService.class);
+    }
+
     /** Creates a new {@link BinaryLogClient} for consuming mysql binlog. */
     public static BinaryLogClient createBinaryClient(Configuration dbzConfiguration) {
         final MySqlConnectorConfig connectorConfig = new MySqlConnectorConfig(dbzConfiguration);
         return new BinaryLogClient(
-                connectorConfig.hostname(),
-                connectorConfig.port(),
-                connectorConfig.username(),
-                connectorConfig.password());
+                connectorConfig.getHostName(),
+                connectorConfig.getPort(),
+                connectorConfig.getUserName(),
+                connectorConfig.getPassword());
     }
 
     /** Creates a new {@link MySqlDatabaseSchema} to monitor the latest MySql database schemas. */
     public static MySqlDatabaseSchema createMySqlDatabaseSchema(
             MySqlConnectorConfig dbzMySqlConfig, boolean isTableIdCaseSensitive) {
-        TopicSelector<TableId> topicSelector = MySqlTopicSelector.defaultSelector(dbzMySqlConfig);
+        TopicNamingStrategy<TableId> topicSelector =
+                dbzMySqlConfig.getTopicNamingStrategy(MySqlConnectorConfig.TOPIC_NAMING_STRATEGY);
         SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
         MySqlValueConverters valueConverters = getValueConverters(dbzMySqlConfig);
         return new MySqlDatabaseSchema(
@@ -179,13 +209,16 @@ public class DebeziumUtils {
 
         boolean timeAdjusterEnabled =
                 dbzMySqlConfig.getConfig().getBoolean(MySqlConnectorConfig.ENABLE_TIME_ADJUSTER);
+        // In Debezium 2.7 the trailing ParsingErrorHandler parameter was replaced by an
+        // EventConvertingFailureHandlingMode plus the connector ServiceRegistry.
         return new MySqlValueConverters(
                 decimalMode,
                 timePrecisionMode,
                 bigIntUnsignedMode,
                 dbzMySqlConfig.binaryHandlingMode(),
                 timeAdjusterEnabled ? MySqlValueConverters::adjustTemporal : x -> x,
-                MySqlValueConverters::defaultParsingErrorHandler);
+                dbzMySqlConfig.getEventConvertingFailureHandlingMode(),
+                dbzMySqlConfig.getServiceRegistry());
     }
 
     public static List<TableId> discoverCapturedTables(
@@ -212,7 +245,7 @@ public class DebeziumUtils {
         return !"0"
                 .equals(
                         readMySqlSystemVariables(connection)
-                                .get(MySqlSystemVariables.LOWER_CASE_TABLE_NAMES));
+                                .get(BinlogSystemVariables.LOWER_CASE_TABLE_NAMES));
     }
 
     public static Map<String, String> readMySqlSystemVariables(JdbcConnection connection) {

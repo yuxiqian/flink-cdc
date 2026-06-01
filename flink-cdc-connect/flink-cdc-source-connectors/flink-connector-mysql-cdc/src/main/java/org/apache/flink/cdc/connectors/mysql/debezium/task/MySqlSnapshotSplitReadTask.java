@@ -28,15 +28,18 @@ import org.apache.flink.cdc.connectors.mysql.source.utils.StatementUtils;
 import org.apache.flink.cdc.connectors.mysql.source.utils.hooks.SnapshotPhaseHooks;
 
 import io.debezium.DebeziumException;
-import io.debezium.connector.mysql.MySqlConnection;
 import io.debezium.connector.mysql.MySqlConnectorConfig;
 import io.debezium.connector.mysql.MySqlDatabaseSchema;
 import io.debezium.connector.mysql.MySqlOffsetContext;
 import io.debezium.connector.mysql.MySqlPartition;
-import io.debezium.connector.mysql.MySqlValueConverters;
+import io.debezium.connector.mysql.jdbc.MySqlConnection;
+import io.debezium.connector.mysql.jdbc.MySqlValueConverters;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.metrics.SnapshotChangeEventSourceMetrics;
+import io.debezium.pipeline.notification.NotificationService;
+import io.debezium.pipeline.signal.actions.snapshotting.SnapshotConfiguration;
 import io.debezium.pipeline.source.AbstractSnapshotChangeEventSource;
+import io.debezium.pipeline.source.SnapshottingTask;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
 import io.debezium.pipeline.spi.SnapshotResult;
 import io.debezium.relational.Column;
@@ -44,7 +47,7 @@ import io.debezium.relational.RelationalSnapshotChangeEventSource;
 import io.debezium.relational.SnapshotChangeRecordEmitter;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
-import io.debezium.schema.TopicSelector;
+import io.debezium.spi.topic.TopicNamingStrategy;
 import io.debezium.util.Clock;
 import io.debezium.util.ColumnUtils;
 import io.debezium.util.Strings;
@@ -61,6 +64,7 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.time.Duration;
 import java.util.Calendar;
+import java.util.Collections;
 
 /** Task to read snapshot split of table. */
 public class MySqlSnapshotSplitReadTask
@@ -77,7 +81,7 @@ public class MySqlSnapshotSplitReadTask
     private final EventDispatcherImpl<TableId> dispatcher;
     private final Clock clock;
     private final MySqlSnapshotSplit snapshotSplit;
-    private final TopicSelector<TableId> topicSelector;
+    private final TopicNamingStrategy<TableId> topicSelector;
     private final EventDispatcher.SnapshotReceiver<MySqlPartition> snapshotReceiver;
     private final SnapshotChangeEventSourceMetrics<MySqlPartition> snapshotChangeEventSourceMetrics;
 
@@ -91,13 +95,15 @@ public class MySqlSnapshotSplitReadTask
             MySqlDatabaseSchema databaseSchema,
             MySqlConnection jdbcConnection,
             EventDispatcherImpl<TableId> dispatcher,
-            TopicSelector<TableId> topicSelector,
+            TopicNamingStrategy<TableId> topicSelector,
             EventDispatcher.SnapshotReceiver<MySqlPartition> snapshotReceiver,
             Clock clock,
             MySqlSnapshotSplit snapshotSplit,
             SnapshotPhaseHooks hooks,
-            boolean isBackfillSkipped) {
-        super(connectorConfig, snapshotChangeEventSourceMetrics);
+            boolean isBackfillSkipped,
+            NotificationService<MySqlPartition, MySqlOffsetContext> notificationService) {
+        // In Debezium 2.7 AbstractSnapshotChangeEventSource gained a trailing NotificationService.
+        super(connectorConfig, snapshotChangeEventSourceMetrics, notificationService);
         this.sourceConfig = sourceConfig;
         this.databaseSchema = databaseSchema;
         this.jdbcConnection = jdbcConnection;
@@ -111,7 +117,10 @@ public class MySqlSnapshotSplitReadTask
         this.isBackfillSkipped = isBackfillSkipped;
     }
 
-    @Override
+    // Not an @Override: in Debezium 2.7 AbstractSnapshotChangeEventSource#execute gained a trailing
+    // SnapshottingTask parameter. flink-cdc's SnapshotSplitReader drives this 3-argument entry
+    // point
+    // directly, so it is kept as a standalone method.
     public SnapshotResult<MySqlOffsetContext> execute(
             ChangeEventSourceContext context,
             MySqlPartition partition,
@@ -120,7 +129,7 @@ public class MySqlSnapshotSplitReadTask
         SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
         final SnapshotContext<MySqlPartition, MySqlOffsetContext> ctx;
         try {
-            ctx = prepare(partition);
+            ctx = prepare(partition, false);
         } catch (Exception e) {
             LOG.error("Failed to initialize snapshot context.", e);
             throw new RuntimeException(e);
@@ -147,7 +156,7 @@ public class MySqlSnapshotSplitReadTask
         final SignalEventDispatcher signalEventDispatcher =
                 new SignalEventDispatcher(
                         previousOffset.getOffset(),
-                        topicSelector.topicNameFor(snapshotSplit.getTableId()),
+                        topicSelector.dataChangeTopic(snapshotSplit.getTableId()),
                         dispatcher.getQueue());
 
         if (hooks.getPreLowWatermarkAction() != null) {
@@ -205,22 +214,40 @@ public class MySqlSnapshotSplitReadTask
     }
 
     @Override
-    protected SnapshottingTask getSnapshottingTask(
+    public SnapshottingTask getSnapshottingTask(
             MySqlPartition partition, MySqlOffsetContext previousOffset) {
-        return new SnapshottingTask(false, true);
+        // In Debezium 2.7 SnapshottingTask gained dataCollections, filterQueries and onDemand
+        // parameters. flink-cdc only snapshots data (not schema) for a single split.
+        return new SnapshottingTask(
+                false, true, Collections.emptyList(), Collections.emptyMap(), false);
     }
 
     @Override
-    protected MySqlSnapshotContext prepare(MySqlPartition partition) throws Exception {
-        return new MySqlSnapshotContext(partition);
+    public SnapshottingTask getBlockingSnapshottingTask(
+            MySqlPartition partition,
+            MySqlOffsetContext previousOffset,
+            SnapshotConfiguration snapshotConfiguration) {
+        // flink-cdc does not use Debezium's blocking (signal-triggered) snapshots. This method was
+        // added to the SnapshotChangeEventSource SPI in Debezium 2.7; return the same data-only
+        // task
+        // as the regular snapshotting task so the contract is satisfied.
+        return new SnapshottingTask(
+                false, true, Collections.emptyList(), Collections.emptyMap(), true);
+    }
+
+    @Override
+    protected MySqlSnapshotContext prepare(MySqlPartition partition, boolean onDemand)
+            throws Exception {
+        return new MySqlSnapshotContext(partition, onDemand);
     }
 
     private static class MySqlSnapshotContext
             extends RelationalSnapshotChangeEventSource.RelationalSnapshotContext<
                     MySqlPartition, MySqlOffsetContext> {
 
-        public MySqlSnapshotContext(MySqlPartition partition) throws SQLException {
-            super(partition, "");
+        public MySqlSnapshotContext(MySqlPartition partition, boolean onDemand)
+                throws SQLException {
+            super(partition, "", onDemand);
         }
     }
 
@@ -308,8 +335,13 @@ public class MySqlSnapshotSplitReadTask
     protected ChangeRecordEmitter<MySqlPartition> getChangeRecordEmitter(
             MySqlSnapshotContext snapshotContext, TableId tableId, Object[] row) {
         snapshotContext.offset.event(tableId, clock.currentTime());
+        // In Debezium 2.7 SnapshotChangeRecordEmitter gained a trailing connectorConfig parameter.
         return new SnapshotChangeRecordEmitter<>(
-                snapshotContext.partition, snapshotContext.offset, row, clock);
+                snapshotContext.partition,
+                snapshotContext.offset,
+                row,
+                clock,
+                sourceConfig.getMySqlConnectorConfig());
     }
 
     private Threads.Timer getTableScanLogTimer() {

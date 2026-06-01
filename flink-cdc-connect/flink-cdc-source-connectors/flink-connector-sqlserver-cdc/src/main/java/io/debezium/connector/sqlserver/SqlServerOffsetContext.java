@@ -6,30 +6,32 @@
 package io.debezium.connector.sqlserver;
 
 import io.debezium.connector.SnapshotRecord;
+import io.debezium.pipeline.CommonOffsetContext;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotContext;
 import io.debezium.pipeline.source.snapshot.incremental.SignalBasedIncrementalSnapshotContext;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DataCollectionId;
+import io.debezium.spi.schema.DataCollectionId;
 import io.debezium.util.Collect;
 import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.Struct;
 
 import java.time.Instant;
 import java.util.Map;
 
 /**
- * Copied from Debezium project(1.9.8.final) to modify the
+ * Copied from Debezium project(2.7.4.Final) to modify the
  * io.debezium.connector.sqlserver.SqlServerOffsetContext.Loader#load(java.util.Map) method. The
  * original method is not able to get the eventSerialNo from the offset map which stores as string.
+ *
+ * <p>Line {@code eventSerialNo} handling in {@link Loader#load(Map)} is the only flink-cdc change
+ * on top of the upstream 2.7.4 base.
  */
-public class SqlServerOffsetContext implements OffsetContext {
+public class SqlServerOffsetContext extends CommonOffsetContext<SourceInfo> {
 
     private static final String SNAPSHOT_COMPLETED_KEY = "snapshot_completed";
 
     private final Schema sourceInfoSchema;
-    private final SourceInfo sourceInfo;
     private boolean snapshotCompleted;
     private final TransactionContext transactionContext;
     private final IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
@@ -45,7 +47,7 @@ public class SqlServerOffsetContext implements OffsetContext {
             long eventSerialNo,
             TransactionContext transactionContext,
             IncrementalSnapshotContext<TableId> incrementalSnapshotContext) {
-        sourceInfo = new SourceInfo(connectorConfig);
+        super(new SourceInfo(connectorConfig));
 
         sourceInfo.setCommitLsn(position.getCommitLsn());
         sourceInfo.setChangeLsn(position.getInTxLsn());
@@ -107,11 +109,6 @@ public class SqlServerOffsetContext implements OffsetContext {
         return sourceInfoSchema;
     }
 
-    @Override
-    public Struct getSourceInfo() {
-        return sourceInfo.struct();
-    }
-
     public TxLogPosition getChangePosition() {
         return TxLogPosition.valueOf(sourceInfo.getCommitLsn(), sourceInfo.getChangeLsn());
     }
@@ -149,11 +146,6 @@ public class SqlServerOffsetContext implements OffsetContext {
     @Override
     public void preSnapshotCompletion() {
         snapshotCompleted = true;
-    }
-
-    @Override
-    public void postSnapshotCompletion() {
-        sourceInfo.setSnapshot(SnapshotRecord.FALSE);
     }
 
     public static class Loader implements OffsetContext.Loader<SqlServerOffsetContext> {
@@ -213,11 +205,6 @@ public class SqlServerOffsetContext implements OffsetContext {
     }
 
     @Override
-    public void markLastSnapshotRecord() {
-        sourceInfo.setSnapshot(SnapshotRecord.LAST);
-    }
-
-    @Override
     public void event(DataCollectionId tableId, Instant timestamp) {
         sourceInfo.setSourceTime(timestamp);
         sourceInfo.setTableId((TableId) tableId);
@@ -226,11 +213,6 @@ public class SqlServerOffsetContext implements OffsetContext {
     @Override
     public TransactionContext getTransactionContext() {
         return transactionContext;
-    }
-
-    @Override
-    public void incrementalSnapshotEvents() {
-        sourceInfo.setSnapshot(SnapshotRecord.INCREMENTAL);
     }
 
     @Override

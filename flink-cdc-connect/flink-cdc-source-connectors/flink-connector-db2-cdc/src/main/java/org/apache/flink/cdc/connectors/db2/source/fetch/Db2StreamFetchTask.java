@@ -119,7 +119,10 @@ public class Db2StreamFetchTask implements FetchTask<SourceSplitBase> {
                     eventDispatcher,
                     errorHandler,
                     Clock.system(),
-                    schema);
+                    schema,
+                    // The streaming source does not use the SnapshotterService in its execute()
+                    // loop; the incremental source drives snapshot/stream coordination itself.
+                    null);
             this.lsnSplit = lsnSplit;
             this.watermarkDispatcher = watermarkDispatcher;
             this.errorHandler = errorHandler;
@@ -173,5 +176,22 @@ public class Db2StreamFetchTask implements FetchTask<SourceSplitBase> {
         public boolean isRunning() {
             return taskRunning;
         }
+
+        @Override
+        public boolean isPaused() {
+            return false;
+        }
+
+        @Override
+        public void resumeStreaming() throws InterruptedException {}
+
+        @Override
+        public void waitSnapshotCompletion() throws InterruptedException {}
+
+        @Override
+        public void streamingPaused() {}
+
+        @Override
+        public void waitStreamingPaused() throws InterruptedException {}
     }
 }

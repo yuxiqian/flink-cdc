@@ -20,11 +20,10 @@ package org.apache.flink.cdc.connectors.postgres.source.schema;
 import io.debezium.connector.postgresql.PostgresConnectorConfig;
 import io.debezium.connector.postgresql.PostgresSchema;
 import io.debezium.connector.postgresql.PostgresValueConverter;
-import io.debezium.connector.postgresql.TypeRegistry;
 import io.debezium.connector.postgresql.connection.PostgresDefaultValueConverter;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
-import io.debezium.schema.TopicSelector;
+import io.debezium.spi.topic.TopicNamingStrategy;
 
 /**
  * Extends PostgresSchema to dispatch Relation messages as schema change events via the event queue
@@ -36,11 +35,10 @@ public class RelationAwarePostgresSchema extends PostgresSchema {
 
     public RelationAwarePostgresSchema(
             PostgresConnectorConfig config,
-            TypeRegistry typeRegistry,
             PostgresDefaultValueConverter defaultValueConverter,
-            TopicSelector<TableId> topicSelector,
+            TopicNamingStrategy<TableId> topicNamingStrategy,
             PostgresValueConverter valueConverter) {
-        super(config, typeRegistry, defaultValueConverter, topicSelector, valueConverter);
+        super(config, defaultValueConverter, topicNamingStrategy, valueConverter);
     }
 
     public void setDispatcher(SchemaDispatcher dispatcher) {

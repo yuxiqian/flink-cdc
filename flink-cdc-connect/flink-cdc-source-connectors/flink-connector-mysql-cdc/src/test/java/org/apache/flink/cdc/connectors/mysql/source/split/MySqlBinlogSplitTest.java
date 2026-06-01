@@ -208,6 +208,16 @@ class MySqlBinlogSplitTest {
         }
 
         @Override
+        public io.debezium.relational.Attribute attributeWithName(String name) {
+            return null;
+        }
+
+        @Override
+        public List<io.debezium.relational.Attribute> attributes() {
+            return Collections.emptyList();
+        }
+
+        @Override
         public String defaultCharsetName() {
             return "UTF-8";
         }

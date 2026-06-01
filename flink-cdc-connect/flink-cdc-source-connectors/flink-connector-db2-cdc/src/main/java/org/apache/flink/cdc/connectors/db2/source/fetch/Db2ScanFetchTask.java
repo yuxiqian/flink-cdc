@@ -31,7 +31,9 @@ import io.debezium.connector.db2.Db2OffsetContext;
 import io.debezium.connector.db2.Db2Partition;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.EventDispatcher;
+import io.debezium.pipeline.signal.actions.snapshotting.SnapshotConfiguration;
 import io.debezium.pipeline.source.AbstractSnapshotChangeEventSource;
+import io.debezium.pipeline.source.SnapshottingTask;
 import io.debezium.pipeline.source.spi.ChangeEventSource;
 import io.debezium.pipeline.source.spi.SnapshotProgressListener;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
@@ -52,6 +54,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Collections;
 
 import static org.apache.flink.cdc.connectors.db2.source.utils.Db2Utils.buildSplitScanQuery;
 import static org.apache.flink.cdc.connectors.db2.source.utils.Db2Utils.readTableSplitDataStatement;
@@ -166,7 +169,10 @@ public class Db2ScanFetchTask extends AbstractScanFetchTask {
                 EventDispatcher<Db2Partition, TableId> dispatcher,
                 EventDispatcher.SnapshotReceiver<Db2Partition> snapshotReceiver,
                 SnapshotSplit snapshotSplit) {
-            super(connectorConfig, snapshotProgressListener);
+            // 2.7.4 added a trailing NotificationService param; the snapshot split task drives the
+            // export itself (it reimplements execute/doExecute) and never uses the notification
+            // service, so null is safe here.
+            super(connectorConfig, snapshotProgressListener, null);
             this.offsetContext = previousOffset;
             this.connectorConfig = connectorConfig;
             this.databaseSchema = databaseSchema;
@@ -178,7 +184,8 @@ public class Db2ScanFetchTask extends AbstractScanFetchTask {
             this.snapshotReceiver = snapshotReceiver;
         }
 
-        @Override
+        // Not an @Override: in 2.7.4 the base execute() gained a trailing SnapshottingTask
+        // parameter. The incremental snapshot split task invokes this 3-arg variant directly.
         public SnapshotResult<Db2OffsetContext> execute(
                 ChangeEventSourceContext context,
                 Db2Partition partition,
@@ -187,7 +194,7 @@ public class Db2ScanFetchTask extends AbstractScanFetchTask {
             SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
             final Db2SnapshotContext ctx;
             try {
-                ctx = prepare(partition);
+                ctx = prepare(partition, snapshottingTask.isOnDemand());
             } catch (Exception e) {
                 LOG.error("Failed to initialize snapshot context.", e);
                 throw new RuntimeException(e);
@@ -218,14 +225,27 @@ public class Db2ScanFetchTask extends AbstractScanFetchTask {
         }
 
         @Override
-        protected SnapshottingTask getSnapshottingTask(
+        public SnapshottingTask getSnapshottingTask(
                 Db2Partition partition, Db2OffsetContext previousOffset) {
-            return new SnapshottingTask(false, true);
+            return new SnapshottingTask(
+                    false, true, Collections.emptyList(), Collections.emptyMap(), false);
         }
 
         @Override
-        protected Db2SnapshotContext prepare(Db2Partition partition) throws Exception {
-            return new Db2SnapshotContext(partition);
+        public SnapshottingTask getBlockingSnapshottingTask(
+                Db2Partition partition,
+                Db2OffsetContext previousOffset,
+                SnapshotConfiguration snapshotConfiguration) {
+            // The incremental snapshot split task never performs an ad-hoc blocking snapshot; the
+            // bounded data export is driven through getSnapshottingTask / doExecute instead.
+            return new SnapshottingTask(
+                    false, true, Collections.emptyList(), Collections.emptyMap(), true);
+        }
+
+        @Override
+        protected Db2SnapshotContext prepare(Db2Partition partition, boolean onDemand)
+                throws Exception {
+            return new Db2SnapshotContext(partition, onDemand);
         }
 
         private void createDataEvents(Db2SnapshotContext snapshotContext, TableId tableId)
@@ -279,8 +299,7 @@ public class Db2ScanFetchTask extends AbstractScanFetchTask {
 
                 while (rs.next()) {
                     rows++;
-                    final Object[] row =
-                            jdbcConnection.rowToArray(table, databaseSchema, rs, columnArray);
+                    final Object[] row = jdbcConnection.rowToArray(table, rs, columnArray);
                     if (logTimer.expired()) {
                         long stop = clock.currentTimeInMillis();
                         LOG.info(
@@ -312,7 +331,7 @@ public class Db2ScanFetchTask extends AbstractScanFetchTask {
                 Db2SnapshotContext snapshotContext, TableId tableId, Object[] row) {
             snapshotContext.offset.event(tableId, clock.currentTime());
             return new SnapshotChangeRecordEmitter<>(
-                    snapshotContext.partition, snapshotContext.offset, row, clock);
+                    snapshotContext.partition, snapshotContext.offset, row, clock, connectorConfig);
         }
 
         private Threads.Timer getTableScanLogTimer() {
@@ -323,8 +342,9 @@ public class Db2ScanFetchTask extends AbstractScanFetchTask {
                 extends RelationalSnapshotChangeEventSource.RelationalSnapshotContext<
                         Db2Partition, Db2OffsetContext> {
 
-            public Db2SnapshotContext(Db2Partition partition) throws SQLException {
-                super(partition, "");
+            public Db2SnapshotContext(Db2Partition partition, boolean onDemand)
+                    throws SQLException {
+                super(partition, "", onDemand);
             }
         }
     }
@@ -344,5 +364,22 @@ public class Db2ScanFetchTask extends AbstractScanFetchTask {
         public boolean isRunning() {
             return taskRunning;
         }
+
+        @Override
+        public boolean isPaused() {
+            return false;
+        }
+
+        @Override
+        public void resumeStreaming() throws InterruptedException {}
+
+        @Override
+        public void waitSnapshotCompletion() throws InterruptedException {}
+
+        @Override
+        public void streamingPaused() {}
+
+        @Override
+        public void waitStreamingPaused() throws InterruptedException {}
     }
 }

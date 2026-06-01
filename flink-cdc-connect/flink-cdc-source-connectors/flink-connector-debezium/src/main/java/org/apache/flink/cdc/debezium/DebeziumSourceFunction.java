@@ -388,12 +388,14 @@ public class DebeziumSourceFunction<T> extends RichSourceFunction<T>
         // history instance name to initialize FlinkDatabaseHistory
         properties.setProperty(
                 FlinkDatabaseHistory.DATABASE_HISTORY_INSTANCE_NAME, engineInstanceName);
-        // we have to use a persisted DatabaseHistory implementation, otherwise, recovery can't
+        // we have to use a persisted SchemaHistory implementation, otherwise, recovery can't
         // continue to read binlog
         // see
         // https://stackoverflow.com/questions/57147584/debezium-error-schema-isnt-know-to-this-connector
         // and https://debezium.io/blog/2018/03/16/note-on-database-history-topic-configuration/
-        properties.setProperty("database.history", determineDatabase().getCanonicalName());
+        // Debezium 2.7.4.Final renamed the "database.history" config key to
+        // "schema.history.internal".
+        properties.setProperty("schema.history.internal", determineDatabase().getCanonicalName());
 
         // we have to filter out the heartbeat events, otherwise the deserializer will fail
         String dbzHeartbeatPrefix =

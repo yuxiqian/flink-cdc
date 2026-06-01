@@ -22,13 +22,13 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Copied from Debezium 1.9.8.Final.
+ * Copied from Debezium 2.7.4.Final.
  *
  * <p>Base class for {@link ChangeRecordEmitter} implementations based on a relational database.
  *
- * <p>This class overrides the emit methods to put some values in the header.
- *
- * <p>Line 59 ~ 257: add other headers and emit.
+ * <p>This class overrides the emit methods to put some values in the header. Subclasses may
+ * override {@link #getEmitConnectHeaders()} to attach extra Connect headers to every emitted
+ * record.
  */
 public abstract class RelationalChangeRecordEmitter<P extends Partition>
         extends AbstractChangeRecordEmitter<P, TableSchema> {
@@ -39,8 +39,12 @@ public abstract class RelationalChangeRecordEmitter<P extends Partition>
     public static final String PK_UPDATE_OLDKEY_FIELD = "__debezium.oldkey";
     public static final String PK_UPDATE_NEWKEY_FIELD = "__debezium.newkey";
 
-    public RelationalChangeRecordEmitter(P partition, OffsetContext offsetContext, Clock clock) {
-        super(partition, offsetContext, clock);
+    public RelationalChangeRecordEmitter(
+            P partition,
+            OffsetContext offsetContext,
+            Clock clock,
+            RelationalDatabaseConnectorConfig connectorConfig) {
+        super(partition, offsetContext, clock, connectorConfig);
     }
 
     @Override
@@ -87,7 +91,7 @@ public abstract class RelationalChangeRecordEmitter<P extends Partition>
         if (skipEmptyMessages() && (newColumnValues == null || newColumnValues.length == 0)) {
             // This case can be hit on UPDATE / DELETE when there's no primary key defined while
             // using certain decoders
-            LOGGER.warn(
+            LOGGER.debug(
                     "no new values found for table '{}' from create message at '{}'; skipping record",
                     tableSchema,
                     getOffset().getSourceInfo());
@@ -140,8 +144,21 @@ public abstract class RelationalChangeRecordEmitter<P extends Partition>
         Struct oldValue = tableSchema.valueFromColumnData(oldColumnValues);
 
         if (skipEmptyMessages() && (newColumnValues == null || newColumnValues.length == 0)) {
-            LOGGER.warn(
+            LOGGER.debug(
                     "no new values found for table '{}' from update message at '{}'; skipping record",
+                    tableSchema,
+                    getOffset().getSourceInfo());
+            return;
+        }
+
+        /*
+         * If skip.messages.without.change is configured true,
+         * Skip Publishing the message in case there is no change in monitored columns
+         * (Postgres) Only works if REPLICA IDENTITY is set to FULL - as oldValues won't be available
+         */
+        if (skipMessagesWithoutChange() && Objects.nonNull(newValue) && newValue.equals(oldValue)) {
+            LOGGER.debug(
+                    "No new values found for table '{}' in included columns from update message at '{}'; skipping record",
                     tableSchema,
                     getOffset().getSourceInfo());
             return;
@@ -181,7 +198,7 @@ public abstract class RelationalChangeRecordEmitter<P extends Partition>
         Struct oldValue = tableSchema.valueFromColumnData(oldColumnValues);
 
         if (skipEmptyMessages() && (oldColumnValues == null || oldColumnValues.length == 0)) {
-            LOGGER.warn(
+            LOGGER.debug(
                     "no old values found for table '{}' from delete message at '{}'; skipping record",
                     tableSchema,
                     getOffset().getSourceInfo());

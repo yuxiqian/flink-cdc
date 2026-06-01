@@ -54,7 +54,9 @@ public class MySqlErrorHandler extends ErrorHandler {
             ChangeEventQueue<?> queue,
             MySqlTaskContext context,
             MySqlSourceConfig sourceConfig) {
-        super(MySqlConnector.class, mySqlConnectorConfig, queue);
+        // The 4th argument (replacedErrorHandler) was added to the Debezium 2.x ErrorHandler
+        // constructor to carry over retry counts; flink-cdc has no prior handler to replace.
+        super(MySqlConnector.class, mySqlConnectorConfig, queue, null);
         this.context = context;
         this.sourceConfig = sourceConfig;
     }

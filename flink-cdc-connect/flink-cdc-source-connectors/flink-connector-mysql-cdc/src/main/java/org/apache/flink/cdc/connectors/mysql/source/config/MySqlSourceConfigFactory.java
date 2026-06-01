@@ -366,12 +366,22 @@ public class MySqlSourceConfigFactory implements Serializable {
         props.setProperty("database.serverTimezone", serverTimeZone);
         // database history
         props.setProperty(
-                "database.history", EmbeddedFlinkDatabaseHistory.class.getCanonicalName());
+                "schema.history.internal", EmbeddedFlinkDatabaseHistory.class.getCanonicalName());
         props.setProperty(
-                "database.history.instance.name", UUID.randomUUID().toString() + "_" + subtaskId);
-        props.setProperty("database.history.skip.unparseable.ddl", String.valueOf(true));
-        props.setProperty("database.history.refer.ddl", String.valueOf(true));
+                "schema.history.internal.instance.name",
+                UUID.randomUUID().toString() + "_" + subtaskId);
+        props.setProperty("schema.history.internal.skip.unparseable.ddl", String.valueOf(true));
+        props.setProperty("schema.history.internal.refer.ddl", String.valueOf(true));
         props.setProperty("connect.timeout.ms", String.valueOf(connectTimeout.toMillis()));
+        // Debezium 2.7.x builds the JDBC connection config from the "database." subset of the
+        // properties (see io.debezium.connector.binlog.jdbc.BinlogConnectionConfiguration, which
+        // reads the connect timeout via Configuration#subset("database.", true) before resolving
+        // CONNECTION_TIMEOUT_MS). The top-level "connect.timeout.ms" above only drives the
+        // connector-level timeout; without the "database."-prefixed copy the configured value is
+        // dropped and the JDBC url falls back to Debezium's 30s default. Set both so the
+        // user-configured connect timeout is honored by the actual JDBC connection (matching the
+        // pre-2.7 behavior where the timeout was read from the full config).
+        props.setProperty("database.connect.timeout.ms", String.valueOf(connectTimeout.toMillis()));
         // the underlying debezium reader should always capture the schema changes and forward them.
         // Note: the includeSchemaChanges parameter is used to control emitting the schema record,
         // only DataStream API program need to emit the schema record, the Table API need not
