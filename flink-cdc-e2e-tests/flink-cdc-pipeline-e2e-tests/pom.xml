@@ -721,15 +721,6 @@ limitations under the License.
                             </outputDirectory>
                         </artifactItem>
                         <artifactItem>
-                            <groupId>org.apache.fluss</groupId>
-                            <artifactId>fluss-flink-2.2</artifactId>
-                            <version>${fluss.version}</version>
-                            <destFileName>fluss-flink-${flink-2.3}.jar</destFileName>
-                            <type>jar</type>
-                            <outputDirectory>${project.build.directory}/dependencies
-                            </outputDirectory>
-                        </artifactItem>
-                        <artifactItem>
                             <groupId>org.apache.flink</groupId>
                             <artifactId>flink-cdc-pipeline-connector-hudi</artifactId>
                             <version>${project.version}</version>
