@@ -37,6 +37,7 @@ concurrency:
 jobs:
   license_check:
     name: License Check
+    if: ${{ false }} # TEMP: disabled for mongo-only debug run
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
@@ -59,12 +60,14 @@ jobs:
         run: gem install rubyzip -v 2.3.0 && ./tools/ci/license_check.rb
   common:
     name: Common Unit Tests
+    if: ${{ false }} # TEMP: disabled for mongo-only debug run
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
       java-versions: "[11]"
       modules: "['core']"
   common_2_x:
     name: Common Unit Tests 2.x
+    if: ${{ false }} # TEMP: disabled for mongo-only debug run
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
       java-versions: "[11]"
@@ -73,12 +76,14 @@ jobs:
       modules: "['core']"
   pipeline-ut:
     name: Pipeline Unit Tests
+    if: ${{ false }} # TEMP: disabled for mongo-only debug run
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
       java-versions: "[11]"
       modules: "['doris, elasticsearch, fluss, hudi, iceberg, kafka, maxcompute, mysql-pipeline, oceanbase-pipeline, paimon, postgres-pipeline, starrocks, oracle-pipeline']"
   pipeline-connectors-ut-2-x:
     name: Pipeline Connectors Unit Tests 2.x
+    if: ${{ false }} # TEMP: disabled for mongo-only debug run
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
       java-versions: "[11]"
@@ -90,7 +95,7 @@ jobs:
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
       java-versions: "[11]"
-      modules: "['mysql-source', 'postgres-source, oceanbase-source, tidb, vitess', 'oracle, sqlserver', 'db2, mongodb']"
+      modules: "['mongodb']"
   source-ut-2-x:
     name: Source Unit Tests 2.x
     uses: ./.github/workflows/flink_cdc_base.yml
@@ -98,8 +103,9 @@ jobs:
       java-versions: "[11]"
       flink-versions: "['2.2.0']"
       custom-maven-parameter: "-Pflink2"
-      modules: "['mysql-source', 'postgres-source, oceanbase-source, tidb, vitess', 'oracle, sqlserver', 'db2, mongodb']"
+      modules: "['mongodb']"
   pipeline_e2e:
+    if: ${{ false }} # TEMP: disabled for mongo-only debug run
     strategy:
       max-parallel: 2
       fail-fast: false
@@ -113,6 +119,7 @@ jobs:
       modules: "['pipeline_e2e']"
       parallelism: ${{ matrix.parallelism }}
   pipeline_e2e_2_x:
+    if: ${{ false }} # TEMP: disabled for mongo-only debug run
     strategy:
       max-parallel: 2
       fail-fast: false
@@ -128,6 +135,7 @@ jobs:
       parallelism: ${{ matrix.parallelism }}
   source_e2e:
     name: Source E2E Tests
+    if: ${{ false }} # TEMP: disabled for mongo-only debug run
     uses: ./.github/workflows/flink_cdc_base.yml
     with:
       java-versions: "[11]"

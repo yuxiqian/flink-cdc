@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 public class MongoDBTestUtils {
 
     public static void waitForSnapshotStarted(String sinkName) throws InterruptedException {
-        waitForSnapshotStarted(sinkName, Duration.ofMinutes(10));
+        waitForSnapshotStarted(sinkName, Duration.ofMinutes(3));
     }
 
     public static void waitForSnapshotStarted(String sinkName, Duration timeout)
@@ -58,7 +58,7 @@ public class MongoDBTestUtils {
 
     public static void waitForSinkSize(String sinkName, int expectedSize)
             throws InterruptedException {
-        waitForSinkSize(sinkName, expectedSize, Duration.ofMinutes(10));
+        waitForSinkSize(sinkName, expectedSize, Duration.ofMinutes(3));
     }
 
     public static void waitForSinkSize(String sinkName, int expectedSize, Duration timeout)
@@ -88,7 +88,7 @@ public class MongoDBTestUtils {
      */
     public static void waitForSinkResult(String sinkName, List<String> expected)
             throws InterruptedException {
-        waitForSinkResult(sinkName, expected, Duration.ofMinutes(10));
+        waitForSinkResult(sinkName, expected, Duration.ofMinutes(3));
     }
 
     public static void waitForSinkResult(String sinkName, List<String> expected, Duration timeout)
