@@ -22,7 +22,7 @@ const baseUrl = process.env.DOCS_BASE_URL || '/flink/flink-cdc-docs-master/';
 /** @type {import('@docusaurus/types').Config} */
 module.exports = {
   title: 'Apache Flink CDC',
-  url: 'https://nightlies.apache.org',
+  url: process.env.DOCS_URL || 'https://nightlies.apache.org',
   baseUrl,
   trailingSlash: true,
   favicon: 'favicon.png',
