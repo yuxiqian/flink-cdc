@@ -46,6 +46,15 @@ jobs:
           distribution: zulu
           java-version: '11'
           cache: maven
+      - name: Set up Maven 3.9.16
+        run: |
+          archive="$RUNNER_TEMP/apache-maven-3.9.16-bin.tar.gz"
+          url="https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.16/apache-maven-3.9.16-bin.tar.gz"
+          curl --fail --silent --show-error --location "$url" --output "$archive"
+          checksum=$(curl --fail --silent --show-error --location "$url.sha512")
+          python3 -c 'import hashlib, pathlib, sys; assert hashlib.sha512(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == sys.argv[2]' "$archive" "$checksum"
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-3.9.16/bin" >> "$GITHUB_PATH"
       - name: Configure GitHub Pages
         id: pages
         uses: actions/configure-pages@v5
