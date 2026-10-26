@@ -35,7 +35,7 @@ concurrency:
 jobs:
   check-doc:
     if: github.repository == 'apache/flink-cdc'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Set up Node.js
@@ -46,7 +46,7 @@ jobs:
       - name: Build Docusaurus site
         if: hashFiles('docs/package.json') != ''
         run: |
-          npm --prefix docs install --package-lock=false
+          npm --prefix docs ci
           npm --prefix docs test
           npm --prefix docs run build
       - name: Build doc
@@ -56,7 +56,7 @@ jobs:
   build-documentation:
     if: github.event_name != 'pull_request' && github.repository == 'apache/flink-cdc'
     name: "Check and build doc"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -92,7 +92,7 @@ jobs:
       - name: Build Docusaurus site
         if: hashFiles('docs/package.json') != ''
         run: |
-          npm --prefix docs install --package-lock=false
+          npm --prefix docs ci
           npm --prefix docs test
           npm --prefix docs run build
 
